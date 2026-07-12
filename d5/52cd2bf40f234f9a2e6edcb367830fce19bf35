@@ -1,0 +1,19 @@
+README.md
+  s_12a43715d907c7::t_0e9294eb49b91e 32-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "d552cd2bf40f234f9a2e6edcb367830fce19bf35",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
