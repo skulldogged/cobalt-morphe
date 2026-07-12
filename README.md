@@ -32,8 +32,21 @@ URLs are accepted.
 ## Available patches
 
 <!-- PATCHES_START EXPANDED -->
+> **[v1.0.0](https://github.com/skulldogged/cobalt-morphe/releases/tag/v1.0.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
+<details open>
+<summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<br>
 
-The release workflow generates the supported-version table here.
+**🎯 Supported versions:**
+
+| 🧪&nbsp;21.26.360 | 🧪&nbsp;21.25.523 | 🧪&nbsp;21.24.360 | 🧪&nbsp;21.05.265 | 20.51.39 | 20.31.42 | 20.21.37 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Cobalt downloads](#cobalt-downloads) | Replaces YouTube's native download action with a direct cobalt download. |  |
+
+</details>
 
 <!-- PATCHES_END -->
 
