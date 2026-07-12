@@ -29,6 +29,14 @@ Picker and local-processing responses are reported as unsupported instead of
 silently choosing or attempting an on-device transcode. Only HTTPS download
 URLs are accepted.
 
+## Available patches
+
+<!-- PATCHES_START EXPANDED -->
+
+The release workflow generates the supported-version table here.
+
+<!-- PATCHES_END -->
+
 ## Build
 
 Morphe's Gradle plugin is hosted in GitHub Packages, so the build needs a GitHub
