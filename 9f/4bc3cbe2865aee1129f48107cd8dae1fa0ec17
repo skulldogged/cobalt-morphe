@@ -1,0 +1,95 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltClient.java
+  s_12a43715d907c7::t_d057ed4ece16ff 1-114
+LICENSE
+  s_12a43715d907c7::t_6520144bccd1fe 1-674
+.github/ISSUE_TEMPLATE/feature_request.yml
+  s_12a43715d907c7::t_6520144bccd1fe 1-8,10-12,14-43
+  s_12a43715d907c7::t_eea27385415ea3 9,13
+.github/workflows/open_pull_request.yml
+  s_12a43715d907c7::t_6520144bccd1fe 1-49
+.releaserc
+  s_12a43715d907c7::t_6520144bccd1fe 1-85
+README.md
+  s_12a43715d907c7::t_eea27385415ea3 1-71
+gradlew
+  s_12a43715d907c7::t_6520144bccd1fe 1-248
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloader.java
+  s_12a43715d907c7::t_f39c6fa46439a8 95-98
+  s_12a43715d907c7::t_d057ed4ece16ff 1-94,99-114
+package.json
+  s_12a43715d907c7::t_6520144bccd1fe 1-11
+.github/workflows/release.yml
+  s_12a43715d907c7::t_6520144bccd1fe 1-58
+patches/build.gradle.kts
+  s_12a43715d907c7::t_6520144bccd1fe 2-3,12-43
+  s_12a43715d907c7::t_d057ed4ece16ff 1,4-11,44
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_12a43715d907c7::t_eea27385415ea3 9,13
+  s_12a43715d907c7::t_6520144bccd1fe 1-8,10-12,14-47
+patches/src/main/kotlin/util/PatchListGenerator.kt
+  s_12a43715d907c7::t_6520144bccd1fe 1-152
+gradle.properties
+  s_12a43715d907c7::t_6520144bccd1fe 1-4
+extensions/extension/build.gradle.kts
+  s_12a43715d907c7::t_d057ed4ece16ff 1-15
+.gitattributes
+  s_12a43715d907c7::t_6520144bccd1fe 1-9
+.gitignore
+  s_12a43715d907c7::t_6520144bccd1fe 1-130
+extensions/extension/src/main/AndroidManifest.xml
+  s_12a43715d907c7::t_d057ed4ece16ff 1-3
+NOTICE
+  s_12a43715d907c7::t_6520144bccd1fe 1-21
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/Fingerprints.kt
+  s_12a43715d907c7::t_d057ed4ece16ff 1-30
+.github/ISSUE_TEMPLATE/config.yml
+  s_12a43715d907c7::t_6520144bccd1fe 1
+gradlew.bat
+  s_12a43715d907c7::t_6520144bccd1fe 1-82
+.github/scripts/generate_patches_readme.py
+  s_12a43715d907c7::t_6520144bccd1fe 1-227
+patches-bundle.json
+  s_12a43715d907c7::t_6520144bccd1fe 1-7
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/CobaltDownloadsPatch.kt
+  s_12a43715d907c7::t_d057ed4ece16ff 1-38
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/Constants.kt
+  s_12a43715d907c7::t_d057ed4ece16ff 1-25
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltResponse.java
+  s_12a43715d907c7::t_d057ed4ece16ff 1-11
+docs/RESEARCH.md
+  s_12a43715d907c7::t_f39c6fa46439a8 1-38
+.editorconfig
+  s_12a43715d907c7::t_6520144bccd1fe 1-3
+settings.gradle.kts
+  s_12a43715d907c7::t_d057ed4ece16ff 1
+  s_12a43715d907c7::t_6520144bccd1fe 2-21
+.github/dependabot.yml
+  s_12a43715d907c7::t_6520144bccd1fe 1-26
+gradle/wrapper/gradle-wrapper.properties
+  s_12a43715d907c7::t_6520144bccd1fe 1-10
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltException.java
+  s_12a43715d907c7::t_d057ed4ece16ff 1-7
+patches-list.json
+  s_12a43715d907c7::t_642ce15fc65f59 1-76
+  s_12a43715d907c7::t_6520144bccd1fe 77
+gradle/libs.versions.toml
+  s_12a43715d907c7::t_6520144bccd1fe 1-8
+package-lock.json
+  s_12a43715d907c7::t_859f6a584b3b2f 1-6015
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "9f4bc3cbe2865aee1129f48107cd8dae1fa0ec17",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
