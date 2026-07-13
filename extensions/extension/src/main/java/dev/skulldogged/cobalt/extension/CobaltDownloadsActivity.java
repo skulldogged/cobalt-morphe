@@ -10,20 +10,24 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.LruCache;
+import android.util.TypedValue;
 import android.webkit.MimeTypeMap;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
-import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -47,7 +51,11 @@ import java.util.concurrent.Executors;
 public final class CobaltDownloadsActivity extends Activity {
     private static final long REFRESH_INTERVAL_MS = 500;
     private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
-    private static final ExecutorService THUMBNAIL_EXECUTOR =
+    private static final int MENU_INFO = 1;
+    private static final int MENU_DELETE = 2;
+    private static final int MENU_RETRY = 3;
+    private static final int MENU_REMOVE = 4;
+    private static final ExecutorService BACKGROUND_EXECUTOR =
             Executors.newFixedThreadPool(2);
     private static final Set<String> THUMBNAILS_LOADING =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -71,7 +79,6 @@ public final class CobaltDownloadsActivity extends Activity {
     };
 
     private LinearLayout list;
-    private boolean dark;
     private int background;
     private int card;
     private int primaryText;
@@ -84,19 +91,30 @@ public final class CobaltDownloadsActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-        background = dark ? Color.rgb(15, 15, 15) : Color.rgb(255, 255, 255);
-        card = dark ? Color.rgb(38, 38, 38) : Color.rgb(245, 245, 245);
-        primaryText = dark ? Color.WHITE : Color.rgb(15, 15, 15);
-        secondaryText = dark ? Color.rgb(185, 185, 185) : Color.rgb(95, 95, 95);
+        boolean night = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        background = themeColor(android.R.attr.colorBackground,
+                night ? Color.BLACK : Color.WHITE);
+        primaryText = themeColor(android.R.attr.textColorPrimary,
+                isDark(background) ? Color.WHITE : Color.rgb(15, 15, 15));
+        secondaryText = themeColor(android.R.attr.textColorSecondary,
+                isDark(background) ? Color.rgb(185, 185, 185) : Color.rgb(95, 95, 95));
+        card = blend(background, primaryText, isDark(background) ? 0.09f : 0.06f);
 
         getWindow().setStatusBarColor(background);
         getWindow().setNavigationBarColor(background);
-        if (!dark) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-            );
+        int systemUi = getWindow().getDecorView().getSystemUiVisibility();
+        int lightBars = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        if (isDark(background)) {
+            systemUi &= ~lightBars;
+        } else {
+            systemUi |= lightBars;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(systemUi);
+        if (Build.VERSION.SDK_INT >= 29) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
         }
 
         LinearLayout root = new LinearLayout(this);
@@ -106,19 +124,20 @@ public final class CobaltDownloadsActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(8), dp(8), dp(16), dp(8));
+        header.setPadding(dp(4), 0, dp(16), 0);
 
-        TextView back = text("‹", 40, primaryText);
+        TextView back = text("←", 28, primaryText);
         back.setGravity(Gravity.CENTER);
         back.setContentDescription("Back");
         back.setOnClickListener(ignored -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(56)));
 
-        TextView title = text("Downloads", 22, primaryText);
+        TextView title = text("Downloads", 20, primaryText);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(
                 0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(56),
                 1
         ));
         root.addView(header);
@@ -198,47 +217,47 @@ public final class CobaltDownloadsActivity extends Activity {
     }
 
     private View buildCard(CobaltDownloadRepository.Record record) {
-        LinearLayout container = new LinearLayout(this);
-        container.setOrientation(LinearLayout.VERTICAL);
-        container.setPadding(dp(16), dp(14), dp(16), dp(12));
+        FrameLayout container = new FrameLayout(this);
+        container.setClipToOutline(true);
+        container.setMinimumHeight(dp(140));
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(card);
-        shape.setCornerRadius(dp(12));
+        shape.setCornerRadius(dp(14));
         container.setBackground(shape);
 
-        LinearLayout summary = new LinearLayout(this);
-        summary.setOrientation(LinearLayout.HORIZONTAL);
-        summary.setGravity(Gravity.TOP);
-
         ImageView thumbnail = new ImageView(this);
-        thumbnail.setScaleType(ImageView.ScaleType.CENTER);
-        thumbnail.setImageResource(android.R.drawable.ic_media_play);
-        thumbnail.setColorFilter(secondaryText);
+        thumbnail.setScaleType(ImageView.ScaleType.CENTER_CROP);
         thumbnail.setContentDescription("Thumbnail for " + displayName(record));
-        GradientDrawable thumbnailBackground = new GradientDrawable();
-        thumbnailBackground.setColor(dark ? Color.rgb(24, 24, 24) : Color.rgb(225, 225, 225));
-        thumbnailBackground.setCornerRadius(dp(8));
-        thumbnail.setBackground(thumbnailBackground);
-        thumbnail.setClipToOutline(true);
-        summary.addView(thumbnail, new LinearLayout.LayoutParams(dp(144), dp(81)));
+        container.addView(thumbnail, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
         loadThumbnail(thumbnail, record);
+
+        View scrim = new View(this);
+        scrim.setBackgroundColor(Color.argb(166, 0, 0, 0));
+        container.addView(scrim, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(10), dp(8), dp(12));
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.TOP);
 
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1
-        );
-        detailsParams.leftMargin = dp(12);
-        summary.addView(details, detailsParams);
 
-        TextView filename = text(displayName(record), 16, primaryText);
+        TextView filename = text(displayName(record), 17, Color.WHITE);
         filename.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         filename.setMaxLines(2);
         details.addView(filename, wrap());
 
-        TextView status = text(statusText(record), 14, secondaryText);
+        TextView status = text(statusText(record), 14, Color.rgb(230, 230, 230));
         LinearLayout.LayoutParams statusParams = wrap();
         statusParams.topMargin = dp(6);
         details.addView(status, statusParams);
@@ -247,12 +266,23 @@ public final class CobaltDownloadsActivity extends Activity {
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                         .format(new Date(record.createdAt)),
                 12,
-                secondaryText
+                Color.rgb(210, 210, 210)
         );
         LinearLayout.LayoutParams dateParams = wrap();
         dateParams.topMargin = dp(8);
         details.addView(date, dateParams);
-        container.addView(summary, wrap());
+        top.addView(details, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        ));
+
+        TextView overflow = text("⋮", 28, Color.WHITE);
+        overflow.setGravity(Gravity.CENTER);
+        overflow.setContentDescription("More options for " + displayName(record));
+        overflow.setOnClickListener(view -> showOverflow(view, record));
+        top.addView(overflow, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        content.addView(top, wrap());
 
         if (CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)
                 || CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
@@ -275,24 +305,19 @@ public final class CobaltDownloadsActivity extends Activity {
                     dp(4)
             );
             progressParams.topMargin = dp(12);
-            container.addView(progress, progressParams);
+            content.addView(progress, progressParams);
         }
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.END);
-        LinearLayout.LayoutParams actionsParams = wrap();
-        actionsParams.topMargin = dp(8);
 
         if (CobaltDownloadRepository.STATE_COMPLETE.equals(record.state)) {
-            actions.addView(action("Open", ignored -> open(record)));
-            actions.addView(action("Delete", ignored -> confirmDelete(record)));
-        } else if (CobaltDownloadRepository.STATE_FAILED.equals(record.state)) {
-            actions.addView(action("Retry", ignored -> retry(record)));
-            actions.addView(action("Remove", ignored -> remove(record)));
+            container.setOnClickListener(ignored -> open(record));
+            container.setClickable(true);
+            container.setFocusable(true);
         }
-        if (actions.getChildCount() > 0) {
-            container.addView(actions, actionsParams);
-        }
+        container.addView(content, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+        ));
         return container;
     }
 
@@ -319,7 +344,7 @@ public final class CobaltDownloadsActivity extends Activity {
                 new File(getCacheDir(), "cobalt-thumbnails"),
                 videoId + ".jpg"
         );
-        THUMBNAIL_EXECUTOR.execute(() -> {
+        BACKGROUND_EXECUTOR.execute(() -> {
             Bitmap bitmap = null;
             try {
                 if (cacheFile.isFile()) {
@@ -496,6 +521,174 @@ public final class CobaltDownloadsActivity extends Activity {
         return "*/*";
     }
 
+    private void showOverflow(View anchor, CobaltDownloadRepository.Record record) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, MENU_INFO, 0, "Info");
+        if (CobaltDownloadRepository.STATE_COMPLETE.equals(record.state)) {
+            popup.getMenu().add(0, MENU_DELETE, 1, "Delete download");
+        } else if (CobaltDownloadRepository.STATE_FAILED.equals(record.state)) {
+            popup.getMenu().add(0, MENU_RETRY, 1, "Retry");
+            popup.getMenu().add(0, MENU_REMOVE, 2, "Remove from list");
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == MENU_INFO) {
+                showInfo(record);
+                return true;
+            }
+            if (item.getItemId() == MENU_DELETE) {
+                confirmDelete(record);
+                return true;
+            }
+            if (item.getItemId() == MENU_RETRY) {
+                retry(record);
+                return true;
+            }
+            if (item.getItemId() == MENU_REMOVE) {
+                remove(record);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void showInfo(CobaltDownloadRepository.Record record) {
+        if (record.outputUri == null) {
+            showInfoDialog(record, basicInfo(record));
+            return;
+        }
+        BACKGROUND_EXECUTOR.execute(() -> {
+            String details = mediaInfo(record);
+            handler.post(() -> {
+                if (!isDestroyed()) {
+                    showInfoDialog(record, details);
+                }
+            });
+        });
+    }
+
+    private void showInfoDialog(CobaltDownloadRepository.Record record, String details) {
+        new AlertDialog.Builder(this)
+                .setTitle(displayName(record))
+                .setMessage(details)
+                .setPositiveButton("Done", null)
+                .show();
+    }
+
+    private String mediaInfo(CobaltDownloadRepository.Record record) {
+        StringBuilder details = new StringBuilder(basicInfo(record));
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(this, Uri.parse(record.outputUri), null);
+            int width = 0;
+            int height = 0;
+            int frameRate = 0;
+            String videoCodec = null;
+            String audioCodec = null;
+            long durationUs = 0;
+            for (int index = 0; index < extractor.getTrackCount(); index++) {
+                MediaFormat format = extractor.getTrackFormat(index);
+                String mime = format.getString(MediaFormat.KEY_MIME);
+                if (mime == null) {
+                    continue;
+                }
+                if (mime.startsWith("video/") && videoCodec == null) {
+                    videoCodec = codecName(mime);
+                    width = integer(format, MediaFormat.KEY_WIDTH);
+                    height = integer(format, MediaFormat.KEY_HEIGHT);
+                    frameRate = integer(format, MediaFormat.KEY_FRAME_RATE);
+                } else if (mime.startsWith("audio/") && audioCodec == null) {
+                    audioCodec = codecName(mime);
+                }
+                if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                    durationUs = Math.max(durationUs, format.getLong(MediaFormat.KEY_DURATION));
+                }
+            }
+            if (width > 0 && height > 0) {
+                appendInfo(details, "Resolution", width + " × " + height);
+            }
+            if (frameRate > 0) {
+                appendInfo(details, "Frame rate", frameRate + " fps");
+            }
+            appendInfo(details, "Video codec", videoCodec);
+            appendInfo(details, "Audio codec", audioCodec);
+            if (durationUs > 0) {
+                appendInfo(details, "Duration", formatDuration(durationUs / 1_000_000L));
+            }
+        } catch (Exception ignored) {
+            appendInfo(details, "Media details", "Unavailable");
+        } finally {
+            extractor.release();
+        }
+        return details.toString();
+    }
+
+    private String basicInfo(CobaltDownloadRepository.Record record) {
+        StringBuilder details = new StringBuilder();
+        appendInfo(details, "Status", statusText(record));
+        appendInfo(details, "Container", containerName(record.filename));
+        if (record.totalBytes > 0) {
+            appendInfo(details, "Size", formatBytes(record.totalBytes));
+        } else if (record.receivedBytes > 0) {
+            appendInfo(details, "Downloaded", formatBytes(record.receivedBytes));
+        }
+        appendInfo(details, "Date", DateFormat.getDateTimeInstance(
+                DateFormat.MEDIUM,
+                DateFormat.SHORT
+        ).format(new Date(record.createdAt)));
+        appendInfo(details, "Source", record.sourceUrl);
+        return details.toString();
+    }
+
+    private void appendInfo(StringBuilder details, String label, String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return;
+        }
+        if (details.length() > 0) {
+            details.append('\n');
+        }
+        details.append(label).append(": ").append(value);
+    }
+
+    private int integer(MediaFormat format, String key) {
+        try {
+            return format.containsKey(key) ? format.getInteger(key) : 0;
+        } catch (RuntimeException ignored) {
+            return 0;
+        }
+    }
+
+    private String codecName(String mime) {
+        if ("video/av01".equalsIgnoreCase(mime)) return "AV1";
+        if ("video/avc".equalsIgnoreCase(mime)) return "H.264";
+        if ("video/hevc".equalsIgnoreCase(mime)) return "H.265 / HEVC";
+        if ("video/x-vnd.on2.vp9".equalsIgnoreCase(mime)) return "VP9";
+        if ("audio/mp4a-latm".equalsIgnoreCase(mime)) return "AAC";
+        if ("audio/opus".equalsIgnoreCase(mime)) return "Opus";
+        if ("audio/mpeg".equalsIgnoreCase(mime)) return "MP3";
+        int slash = mime.indexOf('/');
+        return slash >= 0 ? mime.substring(slash + 1).toUpperCase(Locale.US) : mime;
+    }
+
+    private String containerName(String filename) {
+        if (filename == null) {
+            return null;
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot >= 0 && dot + 1 < filename.length()
+                ? filename.substring(dot + 1).toUpperCase(Locale.US)
+                : null;
+    }
+
+    private String formatDuration(long seconds) {
+        long hours = seconds / 3600;
+        long minutes = (seconds % 3600) / 60;
+        long remainder = seconds % 60;
+        return hours > 0
+                ? String.format(Locale.US, "%d:%02d:%02d", hours, minutes, remainder)
+                : String.format(Locale.US, "%d:%02d", minutes, remainder);
+    }
+
     private void confirmDelete(CobaltDownloadRepository.Record record) {
         new AlertDialog.Builder(this)
                 .setTitle("Delete download?")
@@ -538,17 +731,6 @@ public final class CobaltDownloadsActivity extends Activity {
         return builder.toString();
     }
 
-    private Button action(String label, View.OnClickListener listener) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setTextColor(Color.rgb(255, 45, 45));
-        button.setTextSize(14);
-        button.setAllCaps(false);
-        button.setBackgroundColor(Color.TRANSPARENT);
-        button.setOnClickListener(listener);
-        return button;
-    }
-
     private TextView text(String value, int sizeSp, int color) {
         TextView view = new TextView(this);
         view.setText(value);
@@ -572,6 +754,40 @@ public final class CobaltDownloadsActivity extends Activity {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private int themeColor(int attribute, int fallback) {
+        TypedValue value = new TypedValue();
+        if (!getTheme().resolveAttribute(attribute, value, true)) {
+            return fallback;
+        }
+        if (value.resourceId != 0) {
+            try {
+                return getResources().getColor(value.resourceId, getTheme());
+            } catch (RuntimeException ignored) {
+                return fallback;
+            }
+        }
+        return value.type >= TypedValue.TYPE_FIRST_COLOR_INT
+                && value.type <= TypedValue.TYPE_LAST_COLOR_INT
+                ? value.data
+                : fallback;
+    }
+
+    private boolean isDark(int color) {
+        double luminance = 0.2126 * Color.red(color)
+                + 0.7152 * Color.green(color)
+                + 0.0722 * Color.blue(color);
+        return luminance < 128;
+    }
+
+    private int blend(int base, int overlay, float amount) {
+        float inverse = 1f - amount;
+        return Color.rgb(
+                Math.round(Color.red(base) * inverse + Color.red(overlay) * amount),
+                Math.round(Color.green(base) * inverse + Color.green(overlay) * amount),
+                Math.round(Color.blue(base) * inverse + Color.blue(overlay) * amount)
+        );
     }
 
     private String formatBytes(long bytes) {
