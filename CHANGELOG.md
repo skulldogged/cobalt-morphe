@@ -1,3 +1,9 @@
+## [1.1.4](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.3...v1.1.4) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* make completed downloads actionable ([62bc212](https://github.com/skulldogged/cobalt-morphe/commit/62bc2120bc29232cc9fac8355ea174d49971538b))
+
 ## [1.1.3](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.2...v1.1.3) (2026-07-13)
 
 ### 🐛 Bug Fixes
