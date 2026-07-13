@@ -23,8 +23,8 @@ public final class CobaltListPreference extends ListPreference {
                     "720", "480", "360", "240", "144"
             });
         } else if ("cobalt_video_codec".equals(key)) {
-            setEntries(new CharSequence[] {"AV1", "VP9"});
-            setEntryValues(new CharSequence[] {"av1", "vp9"});
+            setEntries(new CharSequence[] {"AV1", "VP9", "H.264 (best compatibility)"});
+            setEntryValues(new CharSequence[] {"av1", "vp9", "h264"});
         } else if ("cobalt_filename_style".equals(key)) {
             setEntries(new CharSequence[] {"Pretty", "Classic", "Basic", "Nerdy"});
             setEntryValues(new CharSequence[] {"pretty", "classic", "basic", "nerdy"});

@@ -32,6 +32,9 @@ Checked on 2026-07-12 before implementing the first milestone.
 - The client accepts `tunnel`, `redirect`, and two-stream `local-processing`
   merge responses. It rejects picker results, other local-processing operations,
   unknown statuses, and non-HTTPS result URLs.
+- MP4 finalization uses Media3 `MediaMuxerCompat`, which implements its own MP4
+  muxing and supports AV1, VP9, H.264, AAC, and Opus. It does not need the
+  platform `MediaMuxer` codec support that restricted AV1 muxing to Android 14.
 
 ## Verification boundary
 

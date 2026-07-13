@@ -35,7 +35,7 @@ persists and validates the options that the native MP4 pipeline supports:
 - enable or disable the download override
 - cobalt API endpoint, optional Turnstile webpage, and optional API key
 - video quality
-- AV1 or VP9 preference
+- AV1, VP9, or H.264 preference
 - filename style
 - higher-quality YouTube audio preference
 
@@ -55,8 +55,9 @@ old bundled endpoint cannot remain configured silently. Existing users must
 choose their endpoint again after repatching.
 
 Picker responses and local-processing operations other than a two-stream merge
-are reported as unsupported. Only HTTPS download URLs are accepted. The native
-AV1/Opus MP4 remux path requires Android 14 or newer.
+are reported as unsupported. Only HTTPS download URLs are accepted. MP4 remuxing
+uses Media3's compatibility muxer, including on Android 13 and older. H.264 is
+available as the most broadly compatible video option.
 
 ## Available patches
 

@@ -14,7 +14,6 @@ import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
@@ -110,9 +109,6 @@ public final class CobaltDownloadService extends Service {
                 return;
             }
 
-            if (Build.VERSION.SDK_INT < 34) {
-                throw new CobaltException("AV1 MP4 downloads require Android 14 or newer");
-            }
             if (!jobDirectory.mkdirs() && !jobDirectory.isDirectory()) {
                 throw new CobaltException("Could not create temporary download storage");
             }

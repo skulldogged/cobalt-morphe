@@ -16,7 +16,9 @@ final class CobaltSettings {
     private static final Set<String> QUALITIES = new HashSet<>(Arrays.asList(
             "max", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"
     ));
-    private static final Set<String> CODECS = new HashSet<>(Arrays.asList("av1", "vp9"));
+    private static final Set<String> CODECS = new HashSet<>(Arrays.asList(
+            "av1", "vp9", "h264"
+    ));
     private static final Set<String> FILENAME_STYLES = new HashSet<>(Arrays.asList(
             "pretty", "classic", "basic", "nerdy"
     ));
