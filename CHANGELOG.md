@@ -1,3 +1,9 @@
+## [1.7.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.1...v1.7.2) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* align download card content and titles ([7c7bb37](https://github.com/skulldogged/cobalt-morphe/commit/7c7bb3749f1e772561108f42bb286554f5b19788))
+
 ## [1.7.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.0...v1.7.1) (2026-07-13)
 
 ### 🐛 Bug Fixes

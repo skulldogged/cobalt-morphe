@@ -67,7 +67,7 @@ available as the most broadly compatible video option.
 ## Available patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.7.1](https://github.com/skulldogged/cobalt-morphe/releases/tag/v1.7.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
+> **[v1.7.2](https://github.com/skulldogged/cobalt-morphe/releases/tag/v1.7.2)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
 <details open>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
