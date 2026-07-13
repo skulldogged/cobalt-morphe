@@ -1,0 +1,19 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadService.java
+  s_12a43715d907c7::t_1bfb7f9d87d772 40,61-63,498,500,502,517,519,521
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "f322b6fd144d6cf1113d7710538b09157ab2aafb",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
