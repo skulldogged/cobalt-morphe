@@ -54,25 +54,29 @@ private val cobaltDownloadsManifestPatch = resourcePatch {
                 application.appendChild(service)
             }
 
-            val activityName =
-                "dev.skulldogged.cobalt.extension.CobaltDownloadsActivity"
-            val activities = document.getElementsByTagName("activity")
-            var activityExists = false
-            for (index in 0 until activities.length) {
-                val element = activities.item(index) as Element
-                if (element.getAttribute("android:name") == activityName) {
-                    activityExists = true
-                    break
+            fun addActivityIfMissing(activityName: String, launchMode: String? = null) {
+                val activities = document.getElementsByTagName("activity")
+                for (index in 0 until activities.length) {
+                    val element = activities.item(index) as Element
+                    if (element.getAttribute("android:name") == activityName) return
                 }
-            }
 
-            if (!activityExists) {
                 val activity = document.createElement("activity")
                 activity.setAttribute("android:name", activityName)
                 activity.setAttribute("android:exported", "false")
-                activity.setAttribute("android:launchMode", "singleTop")
+                if (launchMode != null) {
+                    activity.setAttribute("android:launchMode", launchMode)
+                }
                 application.appendChild(activity)
             }
+
+            addActivityIfMissing(
+                "dev.skulldogged.cobalt.extension.CobaltDownloadsActivity",
+                "singleTop",
+            )
+            addActivityIfMissing(
+                "dev.skulldogged.cobalt.extension.CobaltTurnstileActivity",
+            )
         }
     }
 
@@ -117,11 +121,20 @@ private val cobaltDownloadsManifestPatch = resourcePatch {
                             "android:defaultValue" to "true",
                         ))
                         addPreference("EditTextPreference", mapOf(
-                            "android:key" to "cobalt_api_url",
+                            "android:key" to "cobalt_api_url_v2",
                             "android:title" to "API endpoint",
-                            "android:summary" to "HTTPS cobalt processing endpoint, including any path such as /api/",
+                            "android:summary" to "Required HTTPS cobalt processing endpoint, including any path such as /api/",
                             "android:dialogTitle" to "API endpoint",
-                            "android:defaultValue" to "https://cobalt.skulldogged.dev/api/",
+                            "android:defaultValue" to "",
+                            "android:inputType" to "textUri",
+                            "android:dependency" to "cobalt_enabled",
+                        ))
+                        addPreference("EditTextPreference", mapOf(
+                            "android:key" to "cobalt_turnstile_url",
+                            "android:title" to "Turnstile webpage",
+                            "android:summary" to "Optional cobalt web frontend used when the API requires Cloudflare Turnstile",
+                            "android:dialogTitle" to "Turnstile webpage",
+                            "android:defaultValue" to "",
                             "android:inputType" to "textUri",
                             "android:dependency" to "cobalt_enabled",
                         ))

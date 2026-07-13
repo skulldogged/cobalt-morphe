@@ -20,19 +20,21 @@ Checked on 2026-07-12 before implementing the first milestone.
 ## cobalt
 
 - Official API contract: `POST /` with JSON `Accept` and `Content-Type` headers.
-- The user-facing root `https://cobalt.skulldogged.dev/` is the web frontend.
-  Its API is mounted at `https://cobalt.skulldogged.dev/api/`.
-- Live `GET /api/` reported cobalt `11.7.1`, YouTube support, branch
-  `meowing.de`, and commit `1e2a1799c14f749129d87c65ba2c0cbf01e778ce`.
-- A live request using the extension's exact request options returned a
-  `tunnel` response with an HTTPS URL and cobalt-generated MP4 filename.
-- The initial client accepts `tunnel` and `redirect`; it deliberately rejects
-  `picker`, `local-processing`, unknown statuses, and non-HTTPS result URLs.
+- No instance is shipped as the default. The API endpoint is required and must
+  be configured by the user.
+- Turnstile-enabled APIs expose a site key in their server information. Their
+  web frontend solves the browser challenge, then sends the result to
+  `POST /session` as the `cf-turnstile-response` header. The returned token is
+  sent to the processing endpoint as `Authorization: Bearer <token>`.
+- The injected client recreates that browser step in an on-demand Android
+  WebView. Session tokens are cached in memory only and discarded when expired
+  or rejected by the API.
+- The client accepts `tunnel`, `redirect`, and two-stream `local-processing`
+  merge responses. It rejects picker results, other local-processing operations,
+  unknown statuses, and non-HTTPS result URLs.
 
 ## Verification boundary
 
-`buildAndroid` and `generatePatchesList` pass, and the generated MPP contains
-the compiled patch plus `extensions/cobalt-downloads.mpe`. End-to-end patching
-and an on-device button tap still require an original compatible YouTube APK;
-the only local YouTube APK discovered during this pass was already Morphe
-patched, so it was not a valid clean patch input.
+`buildAndroid` and `generatePatchesList` produce an MPP containing the compiled
+patch plus `extensions/cobalt-downloads.mpe`. Release candidates are also
+patched into a clean compatible YouTube APK before publication.

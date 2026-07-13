@@ -30,6 +30,10 @@ public final class CobaltDownloader {
         if (context == null || !CobaltSettings.isEnabled() || !isValidVideoId(videoId)) {
             return false;
         }
+        if (CobaltSettings.apiUrl().isEmpty()) {
+            showToast(context, "Choose a cobalt API endpoint in Settings");
+            return true;
+        }
         if (!DOWNLOAD_ACTIVE.compareAndSet(false, true)) {
             showToast(context, "A cobalt download is already running");
             return true;
@@ -37,12 +41,19 @@ public final class CobaltDownloader {
 
         String sourceUrl = "https://www.youtube.com/watch?v=" + videoId;
         String recordId = CobaltDownloadRepository.create(context, sourceUrl);
-        return start(context, sourceUrl, recordId);
+        return startOrAuthorize(context, sourceUrl, recordId);
     }
 
     static boolean retry(String recordId) {
         Context context = applicationContext;
-        if (context == null || !DOWNLOAD_ACTIVE.compareAndSet(false, true)) {
+        if (context == null) {
+            return false;
+        }
+        if (CobaltSettings.apiUrl().isEmpty()) {
+            showToast(context, "Choose a cobalt API endpoint in Settings");
+            return true;
+        }
+        if (!DOWNLOAD_ACTIVE.compareAndSet(false, true)) {
             return false;
         }
         CobaltDownloadRepository.Record record = CobaltDownloadRepository.find(context, recordId);
@@ -51,7 +62,33 @@ public final class CobaltDownloader {
             return false;
         }
         CobaltDownloadRepository.prepareRetry(context, recordId);
-        return start(context, record.sourceUrl, recordId);
+        return startOrAuthorize(context, record.sourceUrl, recordId);
+    }
+
+    private static boolean startOrAuthorize(
+            Context context,
+            String sourceUrl,
+            String recordId
+    ) {
+        String apiUrl = CobaltSettings.apiUrl();
+        boolean needsTurnstile = CobaltSettings.apiKey().isEmpty()
+                && !CobaltSettings.turnstileUrl().isEmpty();
+        if (!needsTurnstile || CobaltSessionManager.hasValidSession(apiUrl)) {
+            return start(context, sourceUrl, recordId);
+        }
+
+        CobaltDownloadRepository.setAuthorizing(context, recordId);
+        Intent intent = new Intent(context, CobaltTurnstileActivity.class)
+                .putExtra(CobaltTurnstileActivity.EXTRA_SOURCE_URL, sourceUrl)
+                .putExtra(CobaltTurnstileActivity.EXTRA_RECORD_ID, recordId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+            showToast(context, "Verifying with cobalt…");
+        } catch (RuntimeException exception) {
+            onAuthorizationFailed(recordId, "Could not open cobalt authorization");
+        }
+        return true;
     }
 
     private static boolean start(Context context, String sourceUrl, String recordId) {
@@ -72,6 +109,25 @@ public final class CobaltDownloader {
         }
         showToast(context, "Preparing cobalt download…");
         return true;
+    }
+
+    static void onAuthorizationSucceeded(String sourceUrl, String recordId) {
+        Context context = applicationContext;
+        if (context == null) {
+            onAuthorizationFailed(recordId, "YouTube is not ready to start the download");
+            return;
+        }
+        DOWNLOAD_ACTIVE.set(true);
+        CobaltDownloadRepository.prepareRetry(context, recordId);
+        start(context, sourceUrl, recordId);
+    }
+
+    static void onAuthorizationFailed(String recordId, String message) {
+        Context context = applicationContext;
+        DOWNLOAD_ACTIVE.set(false);
+        if (context != null && recordId != null) {
+            CobaltDownloadRepository.setFailed(context, recordId, message);
+        }
     }
 
     private static boolean isValidVideoId(String videoId) {

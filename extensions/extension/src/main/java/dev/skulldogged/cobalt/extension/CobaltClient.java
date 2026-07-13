@@ -18,6 +18,11 @@ final class CobaltClient {
     }
 
     static CobaltResponse request(String sourceUrl) throws Exception {
+        String apiUrl = CobaltSettings.apiUrl();
+        if (apiUrl.isEmpty()) {
+            throw new CobaltException("No cobalt API endpoint is configured");
+        }
+
         JSONObject requestJson = new JSONObject()
                 .put("url", sourceUrl)
                 .put("downloadMode", "auto")
@@ -30,8 +35,20 @@ final class CobaltClient {
                 .put("allowH265", true)
                 .put("convertGif", true);
 
-        HttpURLConnection connection =
-                (HttpURLConnection) new URL(CobaltSettings.apiUrl()).openConnection();
+        String authorization = "";
+        String apiKey = CobaltSettings.apiKey();
+        if (!apiKey.isEmpty()) {
+            authorization = "Api-Key " + apiKey;
+        } else {
+            String bearer = CobaltSessionManager.bearerToken(apiUrl);
+            if (!bearer.isEmpty()) {
+                authorization = "Bearer " + bearer;
+            } else if (!CobaltSettings.turnstileUrl().isEmpty()) {
+                throw new CobaltException("Cobalt authorization expired; tap Retry");
+            }
+        }
+
+        HttpURLConnection connection = (HttpURLConnection) new URL(apiUrl).openConnection();
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(15_000);
         connection.setReadTimeout(90_000);
@@ -40,9 +57,8 @@ final class CobaltClient {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Content-Type", "application/json");
         connection.setRequestProperty("User-Agent", "Cobalt-Morphe/0.1");
-        String apiKey = CobaltSettings.apiKey();
-        if (!apiKey.isEmpty()) {
-            connection.setRequestProperty("Authorization", "Api-Key " + apiKey);
+        if (!authorization.isEmpty()) {
+            connection.setRequestProperty("Authorization", authorization);
         }
 
         byte[] body = requestJson.toString().getBytes(StandardCharsets.UTF_8);
@@ -88,6 +104,16 @@ final class CobaltClient {
         if ("error".equals(status)) {
             JSONObject error = json.optJSONObject("error");
             String code = error == null ? "unknown" : error.optString("code", "unknown");
+            if ("error.api.auth.jwt.invalid".equals(code)
+                    || "error.api.auth.jwt.missing".equals(code)) {
+                CobaltSessionManager.clear();
+                if (!CobaltSettings.turnstileUrl().isEmpty()) {
+                    throw new CobaltException("Cobalt authorization expired; tap Retry");
+                }
+                throw new CobaltException(
+                        "This instance requires a Turnstile webpage or API key"
+                );
+            }
             throw new CobaltException(code);
         }
 

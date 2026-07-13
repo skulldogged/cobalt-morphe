@@ -7,7 +7,7 @@ patches {
         source = "https://github.com/skulldogged/cobalt-morphe"
         author = "Skulldogged"
         contact = "na"
-        website = "https://cobalt.skulldogged.dev"
+        website = "https://github.com/skulldogged/cobalt-morphe"
         license = "GPLv3"
     }
 }

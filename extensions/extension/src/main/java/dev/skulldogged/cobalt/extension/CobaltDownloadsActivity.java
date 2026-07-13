@@ -184,7 +184,8 @@ public final class CobaltDownloadsActivity extends Activity {
         statusParams.topMargin = dp(6);
         container.addView(status, statusParams);
 
-        if (CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
+        if (CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)
+                || CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
                 || CobaltDownloadRepository.STATE_DOWNLOADING.equals(record.state)
                 || CobaltDownloadRepository.STATE_FINALIZING.equals(record.state)) {
             ProgressBar progress = new ProgressBar(
@@ -192,7 +193,8 @@ public final class CobaltDownloadsActivity extends Activity {
                     null,
                     android.R.attr.progressBarStyleHorizontal
             );
-            boolean unknown = CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
+            boolean unknown = CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)
+                    || CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
                     || (CobaltDownloadRepository.STATE_DOWNLOADING.equals(record.state)
                     && record.totalBytes <= 0);
             progress.setIndeterminate(unknown);
@@ -235,6 +237,9 @@ public final class CobaltDownloadsActivity extends Activity {
     }
 
     private String statusText(CobaltDownloadRepository.Record record) {
+        if (CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)) {
+            return "Waiting for cobalt verification…";
+        }
         if (CobaltDownloadRepository.STATE_PREPARING.equals(record.state)) {
             return "Preparing download…";
         }

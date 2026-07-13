@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 final class CobaltDownloadRepository {
+    static final String STATE_AUTHORIZING = "authorizing";
     static final String STATE_PREPARING = "preparing";
     static final String STATE_DOWNLOADING = "downloading";
     static final String STATE_FINALIZING = "finalizing";
@@ -50,6 +51,16 @@ final class CobaltDownloadRepository {
             record.totalBytes = -1;
             record.outputUri = null;
             record.downloadManagerId = -1;
+            record.error = null;
+        });
+    }
+
+    static void setAuthorizing(Context context, String id) {
+        update(context, id, record -> {
+            record.state = STATE_AUTHORIZING;
+            record.progress = 0;
+            record.receivedBytes = 0;
+            record.totalBytes = -1;
             record.error = null;
         });
     }

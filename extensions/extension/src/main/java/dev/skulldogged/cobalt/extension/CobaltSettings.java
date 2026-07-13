@@ -10,7 +10,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 final class CobaltSettings {
-    static final String DEFAULT_API_URL = "https://cobalt.skulldogged.dev/api/";
+    static final String DEFAULT_API_URL = "";
+    static final String DEFAULT_TURNSTILE_URL = "";
 
     private static final Set<String> QUALITIES = new HashSet<>(Arrays.asList(
             "max", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"
@@ -36,19 +37,30 @@ final class CobaltSettings {
     }
 
     static String apiUrl() {
-        String configured = preferences().getString("cobalt_api_url", DEFAULT_API_URL);
-        if (configured == null) {
-            return DEFAULT_API_URL;
+        return normalizedHttpsUrl(
+                preferences().getString("cobalt_api_url_v2", DEFAULT_API_URL)
+        );
+    }
+
+    static String turnstileUrl() {
+        return normalizedHttpsUrl(
+                preferences().getString("cobalt_turnstile_url", DEFAULT_TURNSTILE_URL)
+        );
+    }
+
+    private static String normalizedHttpsUrl(String configured) {
+        if (configured == null || configured.trim().isEmpty()) {
+            return "";
         }
         configured = configured.trim();
         try {
             URL url = new URL(configured);
             if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()) {
-                return DEFAULT_API_URL;
+                return "";
             }
             return configured.endsWith("/") ? configured : configured + "/";
         } catch (Exception ignored) {
-            return DEFAULT_API_URL;
+            return "";
         }
     }
 

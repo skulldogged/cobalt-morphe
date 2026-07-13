@@ -8,6 +8,9 @@
             android:name="dev.skulldogged.cobalt.extension.CobaltDownloadsActivity"
             android:exported="false"
             android:launchMode="singleTop" />
+        <activity
+            android:name="dev.skulldogged.cobalt.extension.CobaltTurnstileActivity"
+            android:exported="false" />
         <service
             android:name="dev.skulldogged.cobalt.extension.CobaltDownloadService"
             android:exported="false"

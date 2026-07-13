@@ -1,7 +1,7 @@
 # Cobalt Downloads for Morphe
 
 A custom Morphe patch bundle that replaces YouTube's in-app **Download** action
-with a direct request to a private cobalt instance. For high-quality YouTube
+with a direct request to a configurable cobalt instance. For high-quality YouTube
 videos, the patch downloads cobalt's separate video and audio tunnels in a
 foreground service, then performs a copy-only remux into a finalized MP4 in the
 normal Downloads folder.
@@ -12,13 +12,15 @@ This project uses code and fingerprints adapted from
 ## Current behavior
 
 1. Tap **Download** on a regular YouTube video.
-2. The injected extension posts the video URL to
-   `https://cobalt.skulldogged.dev/api/` on a background thread.
-3. A cobalt `local-processing` merge response is downloaded with native
+2. If the configured instance requires Cloudflare Turnstile, an in-app
+   authorization page obtains a short-lived cobalt session first.
+3. The injected extension posts the video URL to the configured cobalt API on
+   a background thread.
+4. A cobalt `local-processing` merge response is downloaded with native
    progress reporting.
-4. Android copies the selected AV1/VP9 video and Opus audio samples into a finalized,
+5. Android copies the selected AV1/VP9 video and Opus audio samples into a finalized,
    seekable MP4 without transcoding them.
-5. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
+6. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
    system `DownloadManager`.
 
 The **Downloads** entry on YouTube's **You** tab opens a native cobalt download
@@ -31,16 +33,26 @@ The patch adds a **Cobalt downloads** screen to Morphe's in-app settings. It
 persists and validates the options that the native MP4 pipeline supports:
 
 - enable or disable the download override
-- cobalt API endpoint and optional API key
+- cobalt API endpoint, optional Turnstile webpage, and optional API key
 - video quality
 - AV1 or VP9 preference
 - filename style
 - higher-quality YouTube audio preference
 
-The defaults preserve the original behavior: the configured skulldogged API,
-1440p, AV1, pretty filenames, and standard YouTube audio. Video and audio,
-MP4 output, and preferred local processing are fixed internally because those
-are the combinations supported end to end by the current client.
+No cobalt instance is configured by default. After patching, enter an HTTPS API
+endpoint in **Settings → Morphe → Cobalt downloads**. Leave **Turnstile webpage**
+empty for auth-free or API-key instances. If an API requires Turnstile, enter
+the corresponding cobalt web frontend URL there; the patch opens it only when
+a fresh session is needed.
+
+The download defaults are 1440p, AV1, pretty filenames, and standard YouTube
+audio. Video and audio, MP4 output, and preferred local processing are fixed
+internally because those are the combinations supported end to end by the
+current client.
+
+The endpoint preference was reset when Turnstile support was introduced so an
+old bundled endpoint cannot remain configured silently. Existing users must
+choose their endpoint again after repatching.
 
 Picker responses and local-processing operations other than a two-stream merge
 are reported as unsupported. Only HTTPS download URLs are accepted. The native
