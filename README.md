@@ -25,7 +25,7 @@ The first milestone intentionally uses fixed request settings:
 
 - video and audio (`downloadMode: auto`)
 - up to 1440p
-- AV1 video and Opus audio in MP4
+- AV1 video (with cobalt's VP9 fallback) and Opus audio in MP4
 - pretty filenames
 - local processing preferred
 
@@ -87,7 +87,7 @@ kept aligned with the upstream download-button fingerprint.
 - `CobaltDownloader.java` starts the foreground download flow and prevents
   accidental duplicate jobs.
 - `CobaltDownloadService.java` owns tunnel downloads, progress notifications,
-  temporary storage, the native AV1/Opus MP4 remux, and direct-response
+  temporary storage, the Media3 AV1/VP9 + Opus MP4 remux, and direct-response
   `DownloadManager` fallback.
 
 Merged media is processed inside a foreground service running in YouTube's

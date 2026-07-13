@@ -13,3 +13,7 @@ configure<ApplicationExtension> {
         minSdk = 26
     }
 }
+
+dependencies {
+    implementation("androidx.media3:media3-muxer:1.10.1")
+}

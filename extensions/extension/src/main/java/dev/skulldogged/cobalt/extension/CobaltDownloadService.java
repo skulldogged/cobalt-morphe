@@ -11,7 +11,6 @@ import android.content.Intent;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.media.MediaMuxer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -30,6 +29,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+
+import androidx.media3.muxer.MediaMuxerCompat;
 
 public final class CobaltDownloadService extends Service {
     static final String EXTRA_SOURCE_URL = "source_url";
@@ -244,7 +245,7 @@ public final class CobaltDownloadService extends Service {
     ) throws Exception {
         MediaExtractor video = new MediaExtractor();
         MediaExtractor audio = new MediaExtractor();
-        MediaMuxer muxer = null;
+        MediaMuxerCompat muxer = null;
         boolean muxerStarted = false;
 
         try {
@@ -254,15 +255,15 @@ public final class CobaltDownloadService extends Service {
             int audioSourceTrack = selectTrack(audio, false);
             MediaFormat videoFormat = video.getTrackFormat(videoSourceTrack);
             MediaFormat audioFormat = audio.getTrackFormat(audioSourceTrack);
-            requireMime(videoFormat, "video/av01", "AV1 video");
+            requireVideoMime(videoFormat);
             requireMime(audioFormat, "audio/opus", "Opus audio");
 
             video.selectTrack(videoSourceTrack);
             audio.selectTrack(audioSourceTrack);
 
-            muxer = new MediaMuxer(
+            muxer = new MediaMuxerCompat(
                     output.getFileDescriptor(),
-                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+                    MediaMuxerCompat.OUTPUT_FORMAT_MP4
             );
             int videoTargetTrack = muxer.addTrack(videoFormat);
             int audioTargetTrack = muxer.addTrack(audioFormat);
@@ -321,7 +322,6 @@ public final class CobaltDownloadService extends Service {
                 if (muxerStarted) {
                     muxer.stop();
                 }
-                muxer.release();
             }
             video.release();
             audio.release();
@@ -344,6 +344,16 @@ public final class CobaltDownloadService extends Service {
         if (!expected.equalsIgnoreCase(actual)) {
             throw new CobaltException(
                     "Expected " + label + " but cobalt returned " + actual
+            );
+        }
+    }
+
+    private void requireVideoMime(MediaFormat format) throws Exception {
+        String actual = format.getString(MediaFormat.KEY_MIME);
+        if (!"video/av01".equalsIgnoreCase(actual)
+                && !"video/x-vnd.on2.vp9".equalsIgnoreCase(actual)) {
+            throw new CobaltException(
+                    "Expected AV1 or VP9 video but cobalt returned " + actual
             );
         }
     }
