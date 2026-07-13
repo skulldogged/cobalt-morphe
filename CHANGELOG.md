@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.2...v1.8.0) (2026-07-13)
+
+### ✨ New Features
+
+* add channel links to download cards ([0be3b9e](https://github.com/skulldogged/cobalt-morphe/commit/0be3b9eb99beebff804c3d6a3cf7b1355a484093))
+
 ## [1.7.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.1...v1.7.2) (2026-07-13)
 
 ### 🐛 Bug Fixes
