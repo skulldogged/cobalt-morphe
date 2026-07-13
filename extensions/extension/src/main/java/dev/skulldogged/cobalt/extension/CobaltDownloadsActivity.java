@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -37,9 +38,13 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.DateFormat;
@@ -54,8 +59,10 @@ import java.util.concurrent.Executors;
 
 public final class CobaltDownloadsActivity extends Activity {
     private static final String ORIGINAL_PACKAGE = "com.google.android.youtube";
+    private static final String TITLE_PREFERENCES = "cobalt_video_titles";
     private static final long REFRESH_INTERVAL_MS = 500;
     private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_TITLE_RESPONSE_CHARS = 64 * 1024;
     private static final int MENU_INFO = 1;
     private static final int MENU_DELETE = 2;
     private static final int MENU_RETRY = 3;
@@ -66,6 +73,10 @@ public final class CobaltDownloadsActivity extends Activity {
             Collections.newSetFromMap(new ConcurrentHashMap<>());
     private static final Set<String> THUMBNAIL_FAILURES =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<String> TITLES_LOADING =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<String> TITLE_FAILURES =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
     private static final LruCache<String, Bitmap> THUMBNAIL_CACHE =
             new LruCache<String, Bitmap>(16 * 1024 * 1024) {
                 @Override
@@ -73,6 +84,7 @@ public final class CobaltDownloadsActivity extends Activity {
                     return bitmap.getAllocationByteCount();
                 }
             };
+    private static final LruCache<String, String> TITLE_CACHE = new LruCache<>(100);
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshTask = new Runnable() {
@@ -257,8 +269,7 @@ public final class CobaltDownloadsActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
 
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout content = new FrameLayout(this);
         content.setPadding(dp(16), dp(10), dp(8), dp(12));
 
         LinearLayout top = new LinearLayout(this);
@@ -271,24 +282,9 @@ public final class CobaltDownloadsActivity extends Activity {
         TextView filename = text(displayName(record), 17, Color.WHITE);
         filename.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         filename.setMaxLines(2);
+        filename.setEllipsize(TextUtils.TruncateAt.END);
+        loadVideoTitle(filename, record);
         details.addView(filename, wrap());
-
-        TextView status = text(statusText(record), 14, Color.rgb(230, 230, 230));
-        status.setMaxLines(2);
-        status.setEllipsize(TextUtils.TruncateAt.END);
-        LinearLayout.LayoutParams statusParams = wrap();
-        statusParams.topMargin = dp(6);
-        details.addView(status, statusParams);
-
-        TextView date = text(
-                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                        .format(new Date(record.createdAt)),
-                12,
-                Color.rgb(210, 210, 210)
-        );
-        LinearLayout.LayoutParams dateParams = wrap();
-        dateParams.topMargin = dp(8);
-        details.addView(date, dateParams);
         top.addView(details, new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -300,7 +296,29 @@ public final class CobaltDownloadsActivity extends Activity {
         overflow.setContentDescription("More options for " + displayName(record));
         overflow.setOnClickListener(view -> showOverflow(view, record));
         top.addView(overflow, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        content.addView(top, wrap());
+        content.addView(top, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+        ));
+
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setOrientation(LinearLayout.VERTICAL);
+
+        TextView status = text(statusText(record), 14, Color.rgb(230, 230, 230));
+        status.setMaxLines(2);
+        status.setEllipsize(TextUtils.TruncateAt.END);
+        bottom.addView(status, wrap());
+
+        TextView date = text(
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                        .format(new Date(record.createdAt)),
+                12,
+                Color.rgb(210, 210, 210)
+        );
+        LinearLayout.LayoutParams dateParams = wrap();
+        dateParams.topMargin = dp(6);
+        bottom.addView(date, dateParams);
 
         if (CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)
                 || CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
@@ -323,8 +341,14 @@ public final class CobaltDownloadsActivity extends Activity {
                     dp(4)
             );
             progressParams.topMargin = dp(12);
-            content.addView(progress, progressParams);
+            bottom.addView(progress, progressParams);
         }
+
+        content.addView(bottom, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM
+        ));
 
         if (CobaltDownloadRepository.STATE_COMPLETE.equals(record.state)) {
             container.setOnClickListener(ignored -> open(record));
@@ -333,10 +357,110 @@ public final class CobaltDownloadsActivity extends Activity {
         }
         container.addView(content, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM
+                FrameLayout.LayoutParams.MATCH_PARENT
         ));
         return container;
+    }
+
+    private void loadVideoTitle(
+            TextView titleView,
+            CobaltDownloadRepository.Record record
+    ) {
+        String videoId = videoIdFrom(record.sourceUrl);
+        if (videoId == null) {
+            return;
+        }
+        titleView.setTag(videoId);
+
+        String cached = cachedTitle(videoId);
+        if (cached != null) {
+            titleView.setText(cached);
+            return;
+        }
+        if (TITLE_FAILURES.contains(videoId) || !TITLES_LOADING.add(videoId)) {
+            return;
+        }
+
+        BACKGROUND_EXECUTOR.execute(() -> {
+            String title = null;
+            try {
+                title = downloadVideoTitle(videoId);
+            } catch (Exception ignored) {
+                // The filename-derived title remains usable while offline.
+            } finally {
+                TITLES_LOADING.remove(videoId);
+            }
+
+            if (title == null) {
+                TITLE_FAILURES.add(videoId);
+                return;
+            }
+            TITLE_CACHE.put(videoId, title);
+            getSharedPreferences(TITLE_PREFERENCES, MODE_PRIVATE)
+                    .edit()
+                    .putString(videoId, title)
+                    .apply();
+            String loaded = title;
+            handler.post(() -> {
+                if (!isDestroyed() && videoId.equals(titleView.getTag())) {
+                    titleView.setText(loaded);
+                }
+            });
+        });
+    }
+
+    private String cachedTitle(String videoId) {
+        String title = TITLE_CACHE.get(videoId);
+        if (title != null) {
+            return title;
+        }
+        SharedPreferences preferences = getSharedPreferences(
+                TITLE_PREFERENCES,
+                MODE_PRIVATE
+        );
+        title = preferences.getString(videoId, null);
+        if (title != null && !title.trim().isEmpty()) {
+            TITLE_CACHE.put(videoId, title);
+            return title;
+        }
+        return null;
+    }
+
+    private String downloadVideoTitle(String videoId) throws Exception {
+        URL url = new URL(
+                "https://www.youtube.com/oembed?url="
+                        + "https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D"
+                        + videoId
+                        + "&format=json"
+        );
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(15_000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("User-Agent", "Cobalt-Morphe/1.0");
+        try {
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                    || connection.getContentLengthLong() > MAX_TITLE_RESPONSE_CHARS) {
+                return null;
+            }
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
+                char[] buffer = new char[2048];
+                int read;
+                while ((read = reader.read(buffer)) >= 0) {
+                    if (response.length() + read > MAX_TITLE_RESPONSE_CHARS) {
+                        return null;
+                    }
+                    response.append(buffer, 0, read);
+                }
+            }
+            String title = new JSONObject(response.toString()).optString("title", "").trim();
+            return title.isEmpty() || title.length() > 500 ? null : title;
+        } finally {
+            connection.disconnect();
+        }
     }
 
     private void loadThumbnail(
@@ -494,8 +618,29 @@ public final class CobaltDownloadsActivity extends Activity {
     }
 
     private String displayName(CobaltDownloadRepository.Record record) {
+        String videoId = videoIdFrom(record.sourceUrl);
+        String cached = videoId == null ? null : cachedTitle(videoId);
+        if (cached != null) {
+            return cached;
+        }
         String value = record.filename;
-        return value == null || value.trim().isEmpty() ? "YouTube video" : value;
+        if (value == null || value.trim().isEmpty()) {
+            return "YouTube video";
+        }
+        value = value.trim();
+        int extension = value.lastIndexOf('.');
+        if (extension > 0) {
+            value = value.substring(0, extension);
+        }
+        int metadata = value.lastIndexOf(" (");
+        if (metadata > 0 && value.endsWith(")")) {
+            value = value.substring(0, metadata);
+        }
+        int author = value.lastIndexOf(" - ");
+        if (author > 0) {
+            value = value.substring(0, author);
+        }
+        return value.trim().isEmpty() ? "YouTube video" : value.trim();
     }
 
     private void open(CobaltDownloadRepository.Record record) {
@@ -644,6 +789,7 @@ public final class CobaltDownloadsActivity extends Activity {
     private String basicInfo(CobaltDownloadRepository.Record record) {
         StringBuilder details = new StringBuilder();
         appendInfo(details, "Status", statusText(record));
+        appendInfo(details, "File", record.filename);
         appendInfo(details, "Container", containerName(record.filename));
         if (record.totalBytes > 0) {
             appendInfo(details, "Size", formatBytes(record.totalBytes));
