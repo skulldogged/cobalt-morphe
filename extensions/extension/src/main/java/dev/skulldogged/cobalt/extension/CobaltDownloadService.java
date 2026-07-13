@@ -37,6 +37,7 @@ public final class CobaltDownloadService extends Service {
 
     private static final String CHANNEL_ID = "cobalt_downloads";
     private static final int NOTIFICATION_ID = 0x434F4241;
+    private static final int RESULT_NOTIFICATION_ID = NOTIFICATION_ID + 1;
     private static final int BUFFER_SIZE = 256 * 1024;
     private static final ExecutorService JOB_EXECUTOR = Executors.newSingleThreadExecutor();
 
@@ -57,6 +58,9 @@ public final class CobaltDownloadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String sourceUrl = intent == null ? null : intent.getStringExtra(EXTRA_SOURCE_URL);
+        if (notificationManager != null) {
+            notificationManager.cancel(RESULT_NOTIFICATION_ID);
+        }
         startForeground(
                 NOTIFICATION_ID,
                 buildNotification("Preparing download…", 0, true, true)
@@ -491,10 +495,11 @@ public final class CobaltDownloadService extends Service {
     }
 
     private void finishWithMessage(String message, int startId) {
-        stopForeground(STOP_FOREGROUND_DETACH);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         if (notificationManager != null) {
+            notificationManager.cancel(NOTIFICATION_ID);
             notificationManager.notify(
-                    NOTIFICATION_ID,
+                    RESULT_NOTIFICATION_ID,
                     buildNotification(
                             "Cobalt download",
                             message,
@@ -509,10 +514,11 @@ public final class CobaltDownloadService extends Service {
     }
 
     private void finishWithFailure(String message, int startId) {
-        stopForeground(STOP_FOREGROUND_DETACH);
+        stopForeground(STOP_FOREGROUND_REMOVE);
         if (notificationManager != null) {
+            notificationManager.cancel(NOTIFICATION_ID);
             notificationManager.notify(
-                    NOTIFICATION_ID,
+                    RESULT_NOTIFICATION_ID,
                     buildNotification(
                             "Cobalt download failed",
                             message,
