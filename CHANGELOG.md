@@ -1,3 +1,9 @@
+## [1.8.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.8.0...v1.8.1) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* prefer official artist channels for music downloads ([93cab20](https://github.com/skulldogged/cobalt-morphe/commit/93cab20bcfa521b71e9c634850b24860a1e9c136))
+
 ## [1.8.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.2...v1.8.0) (2026-07-13)
 
 ### ✨ New Features
