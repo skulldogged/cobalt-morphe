@@ -23,17 +23,22 @@ final class CobaltClient {
             throw new CobaltException("No cobalt API endpoint is configured");
         }
 
+        String downloadMode = CobaltSettings.downloadMode();
+        boolean audioOnly = "audio".equals(downloadMode);
         JSONObject requestJson = new JSONObject()
                 .put("url", sourceUrl)
-                .put("downloadMode", "auto")
+                .put("downloadMode", downloadMode)
                 .put("videoQuality", CobaltSettings.videoQuality())
                 .put("youtubeVideoCodec", CobaltSettings.videoCodec())
                 .put("youtubeVideoContainer", "mp4")
                 .put("filenameStyle", CobaltSettings.filenameStyle())
-                .put("localProcessing", "preferred")
+                .put("localProcessing", audioOnly ? "disabled" : "preferred")
                 .put("youtubeBetterAudio", CobaltSettings.betterYouTubeAudio())
                 .put("allowH265", true)
                 .put("convertGif", true);
+        if (audioOnly) {
+            requestJson.put("audioFormat", "mp3");
+        }
 
         String authorization = "";
         String apiKey = CobaltSettings.apiKey();
@@ -79,13 +84,17 @@ final class CobaltClient {
                 throw new CobaltException("cobalt returned HTTP " + statusCode);
             }
 
-            return parseResponse(statusCode, new JSONObject(responseBody));
+            return parseResponse(statusCode, new JSONObject(responseBody), downloadMode);
         } finally {
             connection.disconnect();
         }
     }
 
-    private static CobaltResponse parseResponse(int statusCode, JSONObject json)
+    private static CobaltResponse parseResponse(
+            int statusCode,
+            JSONObject json,
+            String downloadMode
+    )
             throws Exception {
         String status = json.optString("status");
 
@@ -95,10 +104,13 @@ final class CobaltClient {
                 throw new CobaltException("cobalt response did not contain a download URL");
             }
 
-            return CobaltResponse.direct(
-                    url,
-                    json.optString("filename", "cobalt-download.mp4")
-            );
+            String filename = json.optString("filename");
+            if (filename.isEmpty()) {
+                filename = "audio".equals(downloadMode)
+                        ? "cobalt-download.mp3"
+                        : "cobalt-download.mp4";
+            }
+            return CobaltResponse.direct(url, filename);
         }
 
         if ("error".equals(status)) {

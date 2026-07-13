@@ -23,6 +23,9 @@ final class CobaltSettings {
     private static final Set<String> FILENAME_STYLES = new HashSet<>(Arrays.asList(
             "pretty", "classic", "basic", "nerdy"
     ));
+    private static final Set<String> DOWNLOAD_MODES = new HashSet<>(Arrays.asList(
+            "auto", "audio"
+    ));
 
     private static volatile SharedPreferences preferences;
 
@@ -83,6 +86,10 @@ final class CobaltSettings {
 
     static String filenameStyle() {
         return allowedString("cobalt_filename_style", "pretty", FILENAME_STYLES);
+    }
+
+    static String downloadMode() {
+        return allowedString("cobalt_download_mode", "auto", DOWNLOAD_MODES);
     }
 
     static boolean betterYouTubeAudio() {

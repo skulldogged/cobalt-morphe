@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.webkit.MimeTypeMap;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -150,7 +151,7 @@ public final class CobaltDownloadsActivity extends Activity {
             list.addView(emptyTitle, titleParams);
 
             TextView emptyBody = text(
-                    "Videos downloaded with the YouTube download button will appear here.",
+                    "Files downloaded with the YouTube download button will appear here.",
                     15,
                     secondaryText
             );
@@ -269,14 +270,40 @@ public final class CobaltDownloadsActivity extends Activity {
             toast("The downloaded file could not be found");
             return;
         }
+        Uri uri = Uri.parse(record.outputUri);
         Intent intent = new Intent(Intent.ACTION_VIEW)
-                .setDataAndType(Uri.parse(record.outputUri), "video/mp4")
+                .setDataAndType(uri, mimeType(record, uri))
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
             startActivity(intent);
         } catch (ActivityNotFoundException exception) {
-            toast("No app is available to play this video");
+            toast("No app is available to open this download");
         }
+    }
+
+    private String mimeType(CobaltDownloadRepository.Record record, Uri uri) {
+        try {
+            String contentType = getContentResolver().getType(uri);
+            if (contentType != null
+                    && !contentType.isEmpty()
+                    && !"application/octet-stream".equals(contentType)) {
+                return contentType;
+            }
+        } catch (RuntimeException ignored) {
+            // Fall back to the cobalt-provided filename below.
+        }
+
+        String filename = record.filename == null ? "" : record.filename;
+        int dot = filename.lastIndexOf('.');
+        if (dot >= 0 && dot + 1 < filename.length()) {
+            String contentType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                    filename.substring(dot + 1).toLowerCase(Locale.US)
+            );
+            if (contentType != null) {
+                return contentType;
+            }
+        }
+        return "*/*";
     }
 
     private void confirmDelete(CobaltDownloadRepository.Record record) {

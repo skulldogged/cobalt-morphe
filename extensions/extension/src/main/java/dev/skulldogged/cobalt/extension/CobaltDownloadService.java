@@ -18,6 +18,7 @@ import android.os.Environment;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
+import android.webkit.MimeTypeMap;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -25,7 +26,6 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.ByteBuffer;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -102,7 +102,7 @@ public final class CobaltDownloadService extends Service {
                 CobaltDownloadRepository.setDirect(
                         this,
                         recordId,
-                        sanitizeFilename(response.filename),
+                        sanitizeDirectFilename(response.filename),
                         downloadId
                 );
                 finishWithoutResult(startId);
@@ -141,7 +141,7 @@ public final class CobaltDownloadService extends Service {
 
             updateProgress(response.filename, "Finalizing MP4…", 90, false);
             CobaltDownloadRepository.setFinalizing(this, recordId, response.filename, 90);
-            String filename = sanitizeFilename(response.filename);
+            String filename = sanitizeMp4Filename(response.filename);
             Uri outputUri = remuxToMediaStore(
                     videoFile,
                     audioFile,
@@ -396,7 +396,7 @@ public final class CobaltDownloadService extends Service {
 
     private long enqueueDirectDownload(CobaltResponse response) throws Exception {
         URL url = requireHttps(response.url);
-        String filename = sanitizeFilename(response.filename);
+        String filename = sanitizeDirectFilename(response.filename);
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.toString()))
                 .setTitle(filename)
                 .setDescription("Downloaded through cobalt")
@@ -405,6 +405,10 @@ public final class CobaltDownloadService extends Service {
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
                 .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+        String mimeType = mimeTypeFromFilename(filename);
+        if (mimeType != null) {
+            request.setMimeType(mimeType);
+        }
         DownloadManager manager = getSystemService(DownloadManager.class);
         if (manager == null) {
             throw new CobaltException("Android DownloadManager is unavailable");
@@ -443,21 +447,50 @@ public final class CobaltDownloadService extends Service {
         }
     }
 
-    private String sanitizeFilename(String filename) {
+    private String sanitizeDirectFilename(String filename) {
+        return limitFilename(sanitizeFilename(filename, "cobalt-download"));
+    }
+
+    private String sanitizeMp4Filename(String filename) {
+        String safe = sanitizeFilename(filename, "cobalt-download.mp4");
+        if (!safe.toLowerCase(java.util.Locale.US).endsWith(".mp4")) {
+            safe += ".mp4";
+        }
+        return limitFilename(safe);
+    }
+
+    private String sanitizeFilename(String filename, String fallback) {
         String safe = filename == null ? "" : filename
                 .replaceAll("[\\\\/:*?\"<>|]", "_")
                 .replaceAll("[\\r\\n]", " ")
                 .trim();
         if (safe.isEmpty() || ".".equals(safe) || "..".equals(safe)) {
-            return "cobalt-download.mp4";
-        }
-        if (!safe.toLowerCase(Locale.US).endsWith(".mp4")) {
-            safe += ".mp4";
-        }
-        if (safe.length() > 180) {
-            safe = safe.substring(0, 176).trim() + ".mp4";
+            return fallback;
         }
         return safe;
+    }
+
+    private String limitFilename(String filename) {
+        String safe = filename;
+        if (safe.length() > 180) {
+            int dot = safe.lastIndexOf('.');
+            String extension = dot > 0 && safe.length() - dot <= 12
+                    ? safe.substring(dot)
+                    : "";
+            int baseLength = 180 - extension.length();
+            safe = safe.substring(0, baseLength).trim() + extension;
+        }
+        return safe;
+    }
+
+    private String mimeTypeFromFilename(String filename) {
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot + 1 >= filename.length()) {
+            return null;
+        }
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(
+                filename.substring(dot + 1).toLowerCase(java.util.Locale.US)
+        );
     }
 
     private String safeMessage(Exception exception) {

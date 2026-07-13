@@ -153,6 +153,13 @@ private val cobaltDownloadsManifestPatch = resourcePatch {
                         "android:title" to "Download preferences"
                     )) {
                         addPreference("dev.skulldogged.cobalt.extension.CobaltListPreference", mapOf(
+                            "android:key" to "cobalt_download_mode",
+                            "android:title" to "Download type",
+                            "android:dialogTitle" to "Download type",
+                            "android:defaultValue" to "auto",
+                            "android:dependency" to "cobalt_enabled",
+                        ))
+                        addPreference("dev.skulldogged.cobalt.extension.CobaltListPreference", mapOf(
                             "android:key" to "cobalt_video_quality",
                             "android:title" to "Video quality",
                             "android:dialogTitle" to "Video quality",

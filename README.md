@@ -23,19 +23,24 @@ This project uses code and fingerprints adapted from
 6. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
    system `DownloadManager`.
 
+Set **Download type** to **Audio only (MP3)** to request an audio-only file
+instead. Audio downloads are processed by the cobalt instance and saved through
+Android's system `DownloadManager` with their audio filename and media type intact.
+
 The **Downloads** entry on YouTube's **You** tab opens a native cobalt download
 manager instead of YouTube's Premium offline page. It keeps a persistent list
 of downloads created by this patch, shows transfer and MP4 finalization
-progress, opens completed videos, deletes downloaded files, and lets failed
+progress, opens completed files, deletes downloaded files, and lets failed
 downloads be retried.
 
 The patch adds a **Cobalt downloads** screen to Morphe's in-app settings. It
-persists and validates the options that the native MP4 pipeline supports:
+persists and validates the supported download options:
 
 - enable or disable the download override
 - cobalt API endpoint, optional Turnstile webpage, and optional API key
 - video quality
 - AV1, VP9, or H.264 preference
+- video or audio-only download type
 - filename style
 - higher-quality YouTube audio preference
 
@@ -45,10 +50,10 @@ empty for auth-free or API-key instances. If an API requires Turnstile, enter
 the corresponding cobalt web frontend URL there; the patch opens it only when
 a fresh session is needed.
 
-The download defaults are 1440p, AV1, pretty filenames, and standard YouTube
-audio. Video and audio, MP4 output, and preferred local processing are fixed
-internally because those are the combinations supported end to end by the
-current client.
+The download defaults are video, 1440p, AV1, pretty filenames, and standard
+YouTube audio. Video downloads use MP4 output and preferred local processing.
+Audio-only downloads use MP3 output and server-side processing for broad Android
+compatibility.
 
 The endpoint preference was reset when Turnstile support was introduced so an
 old bundled endpoint cannot remain configured silently. Existing users must

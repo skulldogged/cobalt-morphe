@@ -13,7 +13,10 @@ public final class CobaltListPreference extends ListPreference {
         super(context, attributes);
 
         String key = attributes.getAttributeValue(ANDROID_NAMESPACE, "key");
-        if ("cobalt_video_quality".equals(key)) {
+        if ("cobalt_download_mode".equals(key)) {
+            setEntries(new CharSequence[] {"Video", "Audio only (MP3)"});
+            setEntryValues(new CharSequence[] {"auto", "audio"});
+        } else if ("cobalt_video_quality".equals(key)) {
             setEntries(new CharSequence[] {
                     "Maximum available", "8K", "4K", "1440p", "1080p",
                     "720p", "480p", "360p", "240p", "144p"
