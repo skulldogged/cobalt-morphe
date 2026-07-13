@@ -1,3 +1,9 @@
+## [1.4.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.3.0...v1.4.0) (2026-07-13)
+
+### ✨ New Features
+
+* add Turnstile authorization ([3540161](https://github.com/skulldogged/cobalt-morphe/commit/3540161b666763d4d00c515787f719585f2fa6d7))
+
 ## [1.3.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.2.1...v1.3.0) (2026-07-13)
 
 ### ✨ New Features
