@@ -1,3 +1,9 @@
+## [1.1.3](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.2...v1.1.3) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* replace foreground notification on completion ([f322b6f](https://github.com/skulldogged/cobalt-morphe/commit/f322b6fd144d6cf1113d7710538b09157ab2aafb))
+
 ## [1.1.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.1...v1.1.2) (2026-07-13)
 
 ### 🐛 Bug Fixes
