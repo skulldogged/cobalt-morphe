@@ -1,0 +1,25 @@
+docs/RESEARCH.md
+  s_12a43715d907c7::t_017ae2d6374d13 35-37
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltSettings.java
+  s_12a43715d907c7::t_017ae2d6374d13 19-21
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltListPreference.java
+  s_12a43715d907c7::t_017ae2d6374d13 26-27
+README.md
+  s_12a43715d907c7::t_d8bdac06cbad9b 38,58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "02e549c8f2f801d631bf1df2cd0aa331b033a19e",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
