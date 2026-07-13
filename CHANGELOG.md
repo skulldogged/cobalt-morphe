@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.5.0...v1.6.0) (2026-07-13)
+
+### ✨ New Features
+
+* improve downloads page integration ([43cc58f](https://github.com/skulldogged/cobalt-morphe/commit/43cc58f30fba9addb9aa74abd2df962d7310886d))
+
 ## [1.5.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.2...v1.5.0) (2026-07-13)
 
 ### ✨ New Features
