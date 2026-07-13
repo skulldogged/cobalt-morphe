@@ -14,8 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class CobaltClient {
-    private static final String API_URL = "https://cobalt.skulldogged.dev/api/";
-
     private CobaltClient() {
     }
 
@@ -23,16 +21,17 @@ final class CobaltClient {
         JSONObject requestJson = new JSONObject()
                 .put("url", sourceUrl)
                 .put("downloadMode", "auto")
-                .put("videoQuality", "1440")
-                .put("youtubeVideoCodec", "av1")
+                .put("videoQuality", CobaltSettings.videoQuality())
+                .put("youtubeVideoCodec", CobaltSettings.videoCodec())
                 .put("youtubeVideoContainer", "mp4")
-                .put("filenameStyle", "pretty")
+                .put("filenameStyle", CobaltSettings.filenameStyle())
                 .put("localProcessing", "preferred")
+                .put("youtubeBetterAudio", CobaltSettings.betterYouTubeAudio())
                 .put("allowH265", true)
                 .put("convertGif", true);
 
         HttpURLConnection connection =
-                (HttpURLConnection) new URL(API_URL).openConnection();
+                (HttpURLConnection) new URL(CobaltSettings.apiUrl()).openConnection();
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(15_000);
         connection.setReadTimeout(90_000);
@@ -41,6 +40,10 @@ final class CobaltClient {
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Content-Type", "application/json");
         connection.setRequestProperty("User-Agent", "Cobalt-Morphe/0.1");
+        String apiKey = CobaltSettings.apiKey();
+        if (!apiKey.isEmpty()) {
+            connection.setRequestProperty("Authorization", "Api-Key " + apiKey);
+        }
 
         byte[] body = requestJson.toString().getBytes(StandardCharsets.UTF_8);
         connection.setFixedLengthStreamingMode(body.length);

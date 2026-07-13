@@ -16,18 +16,25 @@ This project uses code and fingerprints adapted from
    `https://cobalt.skulldogged.dev/api/` on a background thread.
 3. A cobalt `local-processing` merge response is downloaded with native
    progress reporting.
-4. Android copies the AV1 video and Opus audio samples into a finalized,
+4. Android copies the selected AV1/VP9 video and Opus audio samples into a finalized,
    seekable MP4 without transcoding them.
 5. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
    system `DownloadManager`.
 
-The first milestone intentionally uses fixed request settings:
+The patch adds a **Cobalt downloads** screen to Morphe's in-app settings. It
+persists and validates the options that the native MP4 pipeline supports:
 
-- video and audio (`downloadMode: auto`)
-- up to 1440p
-- AV1 video (with cobalt's VP9 fallback) and Opus audio in MP4
-- pretty filenames
-- local processing preferred
+- enable or disable the download override
+- cobalt API endpoint and optional API key
+- video quality
+- AV1 or VP9 preference
+- filename style
+- higher-quality YouTube audio preference
+
+The defaults preserve the original behavior: the configured skulldogged API,
+1440p, AV1, pretty filenames, and standard YouTube audio. Video and audio,
+MP4 output, and preferred local processing are fixed internally because those
+are the combinations supported end to end by the current client.
 
 Picker responses and local-processing operations other than a two-stream merge
 are reported as unsupported. Only HTTPS download URLs are accepted. The native

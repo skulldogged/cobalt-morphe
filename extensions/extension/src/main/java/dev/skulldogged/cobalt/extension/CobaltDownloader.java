@@ -20,12 +20,13 @@ public final class CobaltDownloader {
     public static void initialize(Object application) {
         if (application instanceof Context) {
             applicationContext = ((Context) application).getApplicationContext();
+            CobaltSettings.initialize(applicationContext);
         }
     }
 
     public static boolean onDownloadButtonClick(String videoId) {
         final Context context = applicationContext;
-        if (context == null || !isValidVideoId(videoId)) {
+        if (context == null || !CobaltSettings.isEnabled() || !isValidVideoId(videoId)) {
             return false;
         }
         if (!DOWNLOAD_ACTIVE.compareAndSet(false, true)) {

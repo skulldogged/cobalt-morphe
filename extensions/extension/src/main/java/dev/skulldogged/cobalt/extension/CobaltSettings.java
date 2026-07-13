@@ -1,0 +1,88 @@
+package dev.skulldogged.cobalt.extension;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
+
+import java.net.URL;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+final class CobaltSettings {
+    static final String DEFAULT_API_URL = "https://cobalt.skulldogged.dev/api/";
+
+    private static final Set<String> QUALITIES = new HashSet<>(Arrays.asList(
+            "max", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"
+    ));
+    private static final Set<String> CODECS = new HashSet<>(Arrays.asList("av1", "vp9"));
+    private static final Set<String> FILENAME_STYLES = new HashSet<>(Arrays.asList(
+            "pretty", "classic", "basic", "nerdy"
+    ));
+
+    private static volatile SharedPreferences preferences;
+
+    private CobaltSettings() {
+    }
+
+    static void initialize(Context context) {
+        preferences = PreferenceManager.getDefaultSharedPreferences(
+                context.getApplicationContext()
+        );
+    }
+
+    static boolean isEnabled() {
+        return preferences().getBoolean("cobalt_enabled", true);
+    }
+
+    static String apiUrl() {
+        String configured = preferences().getString("cobalt_api_url", DEFAULT_API_URL);
+        if (configured == null) {
+            return DEFAULT_API_URL;
+        }
+        configured = configured.trim();
+        try {
+            URL url = new URL(configured);
+            if (!"https".equalsIgnoreCase(url.getProtocol()) || url.getHost().isEmpty()) {
+                return DEFAULT_API_URL;
+            }
+            return configured.endsWith("/") ? configured : configured + "/";
+        } catch (Exception ignored) {
+            return DEFAULT_API_URL;
+        }
+    }
+
+    static String apiKey() {
+        String value = preferences().getString("cobalt_api_key", "");
+        return value == null ? "" : value.trim();
+    }
+
+    static String videoQuality() {
+        return allowedString("cobalt_video_quality", "1440", QUALITIES);
+    }
+
+    static String videoCodec() {
+        return allowedString("cobalt_video_codec", "av1", CODECS);
+    }
+
+    static String filenameStyle() {
+        return allowedString("cobalt_filename_style", "pretty", FILENAME_STYLES);
+    }
+
+    static boolean betterYouTubeAudio() {
+        return preferences().getBoolean("cobalt_better_youtube_audio", false);
+    }
+
+    private static String allowedString(String key, String fallback, Set<String> allowed) {
+        String value = preferences().getString(key, fallback);
+        return value != null && allowed.contains(value) ? value : fallback;
+    }
+
+    private static SharedPreferences preferences() {
+        SharedPreferences current = preferences;
+        if (current == null) {
+            throw new IllegalStateException("Cobalt settings are not initialized");
+        }
+        return current;
+    }
+}

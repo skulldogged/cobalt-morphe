@@ -262,7 +262,7 @@ public final class CobaltDownloadService extends Service {
             MediaFormat videoFormat = video.getTrackFormat(videoSourceTrack);
             MediaFormat audioFormat = audio.getTrackFormat(audioSourceTrack);
             requireVideoMime(videoFormat);
-            requireMime(audioFormat, "audio/opus", "Opus audio");
+            requireAudioMime(audioFormat);
 
             video.selectTrack(videoSourceTrack);
             audio.selectTrack(audioSourceTrack);
@@ -345,11 +345,12 @@ public final class CobaltDownloadService extends Service {
         throw new CobaltException(video ? "Video stream had no video track" : "Audio stream had no audio track");
     }
 
-    private void requireMime(MediaFormat format, String expected, String label) throws Exception {
+    private void requireAudioMime(MediaFormat format) throws Exception {
         String actual = format.getString(MediaFormat.KEY_MIME);
-        if (!expected.equalsIgnoreCase(actual)) {
+        if (!"audio/opus".equalsIgnoreCase(actual)
+                && !"audio/mp4a-latm".equalsIgnoreCase(actual)) {
             throw new CobaltException(
-                    "Expected " + label + " but cobalt returned " + actual
+                    "Expected Opus or AAC audio but cobalt returned " + actual
             );
         }
     }
@@ -357,9 +358,10 @@ public final class CobaltDownloadService extends Service {
     private void requireVideoMime(MediaFormat format) throws Exception {
         String actual = format.getString(MediaFormat.KEY_MIME);
         if (!"video/av01".equalsIgnoreCase(actual)
-                && !"video/x-vnd.on2.vp9".equalsIgnoreCase(actual)) {
+                && !"video/x-vnd.on2.vp9".equalsIgnoreCase(actual)
+                && !"video/avc".equalsIgnoreCase(actual)) {
             throw new CobaltException(
-                    "Expected AV1 or VP9 video but cobalt returned " + actual
+                    "Expected AV1, VP9, or AVC video but cobalt returned " + actual
             );
         }
     }
