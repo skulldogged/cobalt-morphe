@@ -56,13 +56,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class CobaltDownloadsActivity extends Activity {
     private static final String ORIGINAL_PACKAGE = "com.google.android.youtube";
     private static final String TITLE_PREFERENCES = "cobalt_video_titles";
+    private static final String METADATA_PREFERENCES = "cobalt_video_metadata";
     private static final long REFRESH_INTERVAL_MS = 500;
     private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_AVATAR_BYTES = 2 * 1024 * 1024;
     private static final int MAX_TITLE_RESPONSE_CHARS = 64 * 1024;
+    private static final int MAX_CHANNEL_RESPONSE_CHARS = 2 * 1024 * 1024;
     private static final int MENU_INFO = 1;
     private static final int MENU_DELETE = 2;
     private static final int MENU_RETRY = 3;
@@ -77,6 +82,10 @@ public final class CobaltDownloadsActivity extends Activity {
             Collections.newSetFromMap(new ConcurrentHashMap<>());
     private static final Set<String> TITLE_FAILURES =
             Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<String> AVATARS_LOADING =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<String> AVATAR_FAILURES =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
     private static final LruCache<String, Bitmap> THUMBNAIL_CACHE =
             new LruCache<String, Bitmap>(16 * 1024 * 1024) {
                 @Override
@@ -85,6 +94,25 @@ public final class CobaltDownloadsActivity extends Activity {
                 }
             };
     private static final LruCache<String, String> TITLE_CACHE = new LruCache<>(100);
+    private static final LruCache<String, VideoMetadata> METADATA_CACHE =
+            new LruCache<>(100);
+    private static final LruCache<String, Bitmap> AVATAR_CACHE =
+            new LruCache<String, Bitmap>(4 * 1024 * 1024) {
+                @Override
+                protected int sizeOf(String key, Bitmap bitmap) {
+                    return bitmap.getAllocationByteCount();
+                }
+            };
+    private static final Pattern CHANNEL_IMAGE_LINK = Pattern.compile(
+            "<link(?=[^>]*\\brel=[\"']image_src[\"'])[^>]*"
+                    + "\\bhref=[\"']([^\"']+)[\"'][^>]*>",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern CHANNEL_IMAGE_META = Pattern.compile(
+            "<meta(?=[^>]*\\bproperty=[\"']og:image[\"'])[^>]*"
+                    + "\\bcontent=[\"']([^\"']+)[\"'][^>]*>",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshTask = new Runnable() {
@@ -283,8 +311,38 @@ public final class CobaltDownloadsActivity extends Activity {
         filename.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         filename.setMaxLines(2);
         filename.setEllipsize(TextUtils.TruncateAt.END);
-        loadVideoTitle(filename, record);
         details.addView(filename, wrap());
+
+        LinearLayout channelRow = new LinearLayout(this);
+        channelRow.setOrientation(LinearLayout.HORIZONTAL);
+        channelRow.setGravity(Gravity.CENTER_VERTICAL);
+        channelRow.setVisibility(View.GONE);
+        channelRow.setBackground(themeDrawable(android.R.attr.selectableItemBackground));
+        channelRow.setPadding(0, dp(2), dp(8), dp(2));
+
+        ImageView channelAvatar = new ImageView(this);
+        channelAvatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        GradientDrawable avatarPlaceholder = new GradientDrawable();
+        avatarPlaceholder.setShape(GradientDrawable.OVAL);
+        avatarPlaceholder.setColor(Color.argb(120, 190, 190, 190));
+        channelAvatar.setBackground(avatarPlaceholder);
+        channelAvatar.setClipToOutline(true);
+        channelRow.addView(channelAvatar, new LinearLayout.LayoutParams(dp(26), dp(26)));
+
+        TextView channelName = text("", 13, Color.rgb(230, 230, 230));
+        channelName.setMaxLines(1);
+        channelName.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams channelNameParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        );
+        channelNameParams.leftMargin = dp(8);
+        channelRow.addView(channelName, channelNameParams);
+        LinearLayout.LayoutParams channelParams = wrap();
+        channelParams.topMargin = dp(4);
+        details.addView(channelRow, channelParams);
+        loadVideoMetadata(filename, channelRow, channelAvatar, channelName, record);
         top.addView(details, new LinearLayout.LayoutParams(
                 0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -362,8 +420,11 @@ public final class CobaltDownloadsActivity extends Activity {
         return container;
     }
 
-    private void loadVideoTitle(
+    private void loadVideoMetadata(
             TextView titleView,
+            LinearLayout channelRow,
+            ImageView channelAvatar,
+            TextView channelName,
             CobaltDownloadRepository.Record record
     ) {
         String videoId = videoIdFrom(record.sourceUrl);
@@ -371,42 +432,154 @@ public final class CobaltDownloadsActivity extends Activity {
             return;
         }
         titleView.setTag(videoId);
+        channelRow.setTag(videoId);
+        channelAvatar.setTag(videoId);
 
-        String cached = cachedTitle(videoId);
-        if (cached != null) {
-            titleView.setText(cached);
+        VideoMetadata metadata = cachedMetadata(videoId);
+        if (metadata != null) {
+            applyVideoMetadata(
+                    videoId,
+                    metadata,
+                    titleView,
+                    channelRow,
+                    channelAvatar,
+                    channelName
+            );
             return;
+        }
+        String cachedTitle = cachedTitle(videoId);
+        if (cachedTitle != null) {
+            titleView.setText(cachedTitle);
         }
         if (TITLE_FAILURES.contains(videoId) || !TITLES_LOADING.add(videoId)) {
             return;
         }
 
         BACKGROUND_EXECUTOR.execute(() -> {
-            String title = null;
+            VideoMetadata loadedMetadata = null;
             try {
-                title = downloadVideoTitle(videoId);
+                loadedMetadata = downloadVideoMetadata(videoId);
             } catch (Exception ignored) {
                 // The filename-derived title remains usable while offline.
             } finally {
                 TITLES_LOADING.remove(videoId);
             }
 
-            if (title == null) {
+            if (loadedMetadata == null) {
                 TITLE_FAILURES.add(videoId);
                 return;
             }
-            TITLE_CACHE.put(videoId, title);
+            cacheMetadata(videoId, loadedMetadata);
+            TITLE_CACHE.put(videoId, loadedMetadata.title);
             getSharedPreferences(TITLE_PREFERENCES, MODE_PRIVATE)
                     .edit()
-                    .putString(videoId, title)
+                    .putString(videoId, loadedMetadata.title)
                     .apply();
-            String loaded = title;
+            VideoMetadata loaded = loadedMetadata;
             handler.post(() -> {
                 if (!isDestroyed() && videoId.equals(titleView.getTag())) {
-                    titleView.setText(loaded);
+                    applyVideoMetadata(
+                            videoId,
+                            loaded,
+                            titleView,
+                            channelRow,
+                            channelAvatar,
+                            channelName
+                    );
                 }
             });
         });
+    }
+
+    private void applyVideoMetadata(
+            String videoId,
+            VideoMetadata metadata,
+            TextView titleView,
+            LinearLayout channelRow,
+            ImageView channelAvatar,
+            TextView channelName
+    ) {
+        if (!videoId.equals(titleView.getTag())
+                || !videoId.equals(channelRow.getTag())) {
+            return;
+        }
+        titleView.setText(metadata.title);
+        if (metadata.channelUrl == null || metadata.channelName == null) {
+            channelRow.setVisibility(View.GONE);
+            return;
+        }
+        String label = channelLabel(metadata);
+        channelName.setText(label);
+        channelAvatar.setContentDescription("Profile picture for " + label);
+        channelRow.setContentDescription("Open " + label + " channel");
+        channelRow.setOnClickListener(ignored -> openChannel(metadata.channelUrl));
+        channelRow.setClickable(true);
+        channelRow.setFocusable(true);
+        channelRow.setVisibility(View.VISIBLE);
+        loadChannelAvatar(channelAvatar, videoId, metadata);
+    }
+
+    private String channelLabel(VideoMetadata metadata) {
+        try {
+            String segment = Uri.parse(metadata.channelUrl).getLastPathSegment();
+            if (segment != null && segment.startsWith("@") && segment.length() > 1) {
+                return segment;
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the channel's display name.
+        }
+        return metadata.channelName;
+    }
+
+    private VideoMetadata cachedMetadata(String videoId) {
+        VideoMetadata metadata = METADATA_CACHE.get(videoId);
+        if (metadata != null) {
+            return metadata;
+        }
+        String value = getSharedPreferences(METADATA_PREFERENCES, MODE_PRIVATE)
+                .getString(videoId, null);
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            JSONObject json = new JSONObject(value);
+            String title = json.optString("title", "").trim();
+            if (title.isEmpty()) {
+                return null;
+            }
+            metadata = new VideoMetadata(
+                    title,
+                    optional(json, "channelName"),
+                    optional(json, "channelUrl"),
+                    optional(json, "avatarUrl")
+            );
+            METADATA_CACHE.put(videoId, metadata);
+            return metadata;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void cacheMetadata(String videoId, VideoMetadata metadata) {
+        METADATA_CACHE.put(videoId, metadata);
+        try {
+            JSONObject json = new JSONObject()
+                    .put("title", metadata.title)
+                    .put("channelName", metadata.channelName)
+                    .put("channelUrl", metadata.channelUrl)
+                    .put("avatarUrl", metadata.avatarUrl);
+            getSharedPreferences(METADATA_PREFERENCES, MODE_PRIVATE)
+                    .edit()
+                    .putString(videoId, json.toString())
+                    .apply();
+        } catch (Exception ignored) {
+            // The in-memory metadata remains usable if persistence fails.
+        }
+    }
+
+    private String optional(JSONObject json, String key) {
+        String value = json.optString(key, "").trim();
+        return value.isEmpty() ? null : value;
     }
 
     private String cachedTitle(String videoId) {
@@ -426,7 +599,7 @@ public final class CobaltDownloadsActivity extends Activity {
         return null;
     }
 
-    private String downloadVideoTitle(String videoId) throws Exception {
+    private VideoMetadata downloadVideoMetadata(String videoId) throws Exception {
         URL url = new URL(
                 "https://www.youtube.com/oembed?url="
                         + "https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3D"
@@ -444,22 +617,235 @@ public final class CobaltDownloadsActivity extends Activity {
                     || connection.getContentLengthLong() > MAX_TITLE_RESPONSE_CHARS) {
                 return null;
             }
-            StringBuilder response = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
-                char[] buffer = new char[2048];
-                int read;
-                while ((read = reader.read(buffer)) >= 0) {
-                    if (response.length() + read > MAX_TITLE_RESPONSE_CHARS) {
-                        return null;
-                    }
-                    response.append(buffer, 0, read);
-                }
+            String response = readText(connection, MAX_TITLE_RESPONSE_CHARS);
+            if (response == null) {
+                return null;
             }
-            String title = new JSONObject(response.toString()).optString("title", "").trim();
-            return title.isEmpty() || title.length() > 500 ? null : title;
+            JSONObject json = new JSONObject(response);
+            String title = json.optString("title", "").trim();
+            if (title.isEmpty() || title.length() > 500) {
+                return null;
+            }
+            String channelName = json.optString("author_name", "").trim();
+            String channelUrl = json.optString("author_url", "").trim();
+            if (channelName.isEmpty()
+                    || channelName.length() > 200
+                    || !isYoutubeChannelUrl(channelUrl)) {
+                channelName = null;
+                channelUrl = null;
+            }
+            return new VideoMetadata(title, channelName, channelUrl, null);
         } finally {
             connection.disconnect();
+        }
+    }
+
+    private String downloadChannelAvatarUrl(String channelUrl) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(channelUrl).openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(15_000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("Accept", "text/html");
+            connection.setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 "
+                            + "Chrome/138 Mobile Safari/537.36"
+            );
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                    || connection.getContentLengthLong() > MAX_CHANNEL_RESPONSE_CHARS) {
+                return null;
+            }
+            String html = readText(connection, MAX_CHANNEL_RESPONSE_CHARS);
+            if (html == null) {
+                return null;
+            }
+            Matcher matcher = CHANNEL_IMAGE_LINK.matcher(html);
+            if (!matcher.find()) {
+                matcher = CHANNEL_IMAGE_META.matcher(html);
+                if (!matcher.find()) {
+                    return null;
+                }
+            }
+            String avatarUrl = matcher.group(1)
+                    .replace("&amp;", "&")
+                    .replaceFirst("=s\\d+", "=s96");
+            return isYoutubeAvatarUrl(avatarUrl) ? avatarUrl : null;
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String readText(HttpURLConnection connection, int maximumChars) throws Exception {
+        StringBuilder response = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
+            char[] buffer = new char[4096];
+            int read;
+            while ((read = reader.read(buffer)) >= 0) {
+                if (response.length() + read > maximumChars) {
+                    return null;
+                }
+                response.append(buffer, 0, read);
+            }
+        }
+        return response.toString();
+    }
+
+    private boolean isYoutubeChannelUrl(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost();
+            String path = uri.getPath();
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && host != null
+                    && ("youtube.com".equalsIgnoreCase(host)
+                    || host.toLowerCase(Locale.US).endsWith(".youtube.com"))
+                    && path != null
+                    && (path.startsWith("/@")
+                    || path.startsWith("/channel/")
+                    || path.startsWith("/c/")
+                    || path.startsWith("/user/"));
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isYoutubeAvatarUrl(String value) {
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null) {
+                return false;
+            }
+            host = host.toLowerCase(Locale.US);
+            return host.equals("googleusercontent.com")
+                    || host.endsWith(".googleusercontent.com")
+                    || host.equals("ggpht.com")
+                    || host.endsWith(".ggpht.com");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    private void loadChannelAvatar(
+            ImageView imageView,
+            String videoId,
+            VideoMetadata metadata
+    ) {
+        imageView.setTag(videoId);
+        if (metadata.channelUrl == null) {
+            return;
+        }
+        Bitmap cached = AVATAR_CACHE.get(videoId);
+        if (cached != null) {
+            applyChannelAvatar(imageView, videoId, cached);
+            return;
+        }
+        if (AVATAR_FAILURES.contains(videoId) || !AVATARS_LOADING.add(videoId)) {
+            return;
+        }
+
+        File cacheFile = new File(
+                new File(getCacheDir(), "cobalt-channel-avatars"),
+                videoId + ".jpg"
+        );
+        BACKGROUND_EXECUTOR.execute(() -> {
+            Bitmap bitmap = null;
+            try {
+                if (cacheFile.isFile()) {
+                    bitmap = BitmapFactory.decodeFile(cacheFile.getAbsolutePath());
+                    if (bitmap == null) {
+                        //noinspection ResultOfMethodCallIgnored
+                        cacheFile.delete();
+                    }
+                }
+                if (bitmap == null) {
+                    String avatarUrl = metadata.avatarUrl;
+                    if (avatarUrl == null) {
+                        avatarUrl = downloadChannelAvatarUrl(metadata.channelUrl);
+                        if (avatarUrl != null) {
+                            cacheMetadata(videoId, new VideoMetadata(
+                                    metadata.title,
+                                    metadata.channelName,
+                                    metadata.channelUrl,
+                                    avatarUrl
+                            ));
+                        }
+                    }
+                    bitmap = downloadAvatar(avatarUrl);
+                    if (bitmap != null) {
+                        cacheThumbnail(cacheFile, bitmap);
+                    }
+                }
+            } catch (Exception ignored) {
+                // Keep the circular placeholder if an avatar is unavailable.
+            } finally {
+                AVATARS_LOADING.remove(videoId);
+            }
+
+            if (bitmap == null) {
+                AVATAR_FAILURES.add(videoId);
+                return;
+            }
+            AVATAR_CACHE.put(videoId, bitmap);
+            Bitmap loaded = bitmap;
+            handler.post(() -> {
+                if (!isDestroyed()) {
+                    applyChannelAvatar(imageView, videoId, loaded);
+                }
+            });
+        });
+    }
+
+    private Bitmap downloadAvatar(String avatarUrl) throws Exception {
+        if (!isYoutubeAvatarUrl(avatarUrl)) {
+            return null;
+        }
+        HttpURLConnection connection = (HttpURLConnection) new URL(avatarUrl).openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(15_000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("Accept", "image/*");
+        connection.setRequestProperty("User-Agent", "Cobalt-Morphe/1.0");
+        try {
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                    || connection.getContentLengthLong() > MAX_AVATAR_BYTES) {
+                return null;
+            }
+            try (InputStream input = connection.getInputStream()) {
+                return BitmapFactory.decodeStream(input);
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private void applyChannelAvatar(ImageView imageView, String videoId, Bitmap bitmap) {
+        if (!videoId.equals(imageView.getTag())) {
+            return;
+        }
+        imageView.setImageBitmap(bitmap);
+    }
+
+    private void openChannel(String channelUrl) {
+        Uri uri = Uri.parse(channelUrl);
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, uri).setPackage(getPackageName()));
+        } catch (ActivityNotFoundException exception) {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, uri));
+            } catch (ActivityNotFoundException ignored) {
+                toast("No app is available to open this channel");
+            }
         }
     }
 
@@ -1008,5 +1394,24 @@ public final class CobaltDownloadsActivity extends Activity {
 
     private void toast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private static final class VideoMetadata {
+        final String title;
+        final String channelName;
+        final String channelUrl;
+        final String avatarUrl;
+
+        VideoMetadata(
+                String title,
+                String channelName,
+                String channelUrl,
+                String avatarUrl
+        ) {
+            this.title = title;
+            this.channelName = channelName;
+            this.channelUrl = channelUrl;
+            this.avatarUrl = avatarUrl;
+        }
     }
 }
