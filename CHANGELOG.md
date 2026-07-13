@@ -1,3 +1,9 @@
+## [1.1.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.0...v1.1.1) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* write completed downloads through MediaStore ([bec52bf](https://github.com/skulldogged/cobalt-morphe/commit/bec52bf2c9402e0eb957e14a3ee966526cccba3e))
+
 ## [1.1.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.0.0...v1.1.0) (2026-07-13)
 
 ### ✨ New Features
