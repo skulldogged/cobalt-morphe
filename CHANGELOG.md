@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.1...v1.1.2) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* support cobalt codec fallback in MP4 ([2dfc1fd](https://github.com/skulldogged/cobalt-morphe/commit/2dfc1fd51a17fb1d9e900b5296feeee7f0745b63))
+
 ## [1.1.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.0...v1.1.1) (2026-07-13)
 
 ### 🐛 Bug Fixes
