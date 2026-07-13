@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -13,25 +15,51 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.LruCache;
 import android.webkit.MimeTypeMap;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.DateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class CobaltDownloadsActivity extends Activity {
     private static final long REFRESH_INTERVAL_MS = 500;
+    private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
+    private static final ExecutorService THUMBNAIL_EXECUTOR =
+            Executors.newFixedThreadPool(2);
+    private static final Set<String> THUMBNAILS_LOADING =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final Set<String> THUMBNAIL_FAILURES =
+            Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private static final LruCache<String, Bitmap> THUMBNAIL_CACHE =
+            new LruCache<String, Bitmap>(16 * 1024 * 1024) {
+                @Override
+                protected int sizeOf(String key, Bitmap bitmap) {
+                    return bitmap.getAllocationByteCount();
+                }
+            };
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshTask = new Runnable() {
@@ -49,6 +77,7 @@ public final class CobaltDownloadsActivity extends Activity {
     private int primaryText;
     private int secondaryText;
     private String lastSignature = "";
+    private boolean resumed;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,6 +151,7 @@ public final class CobaltDownloadsActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         lastSignature = "";
         handler.removeCallbacks(refreshTask);
         handler.post(refreshTask);
@@ -129,6 +159,7 @@ public final class CobaltDownloadsActivity extends Activity {
 
     @Override
     protected void onPause() {
+        resumed = false;
         handler.removeCallbacks(refreshTask);
         super.onPause();
     }
@@ -175,15 +206,53 @@ public final class CobaltDownloadsActivity extends Activity {
         shape.setCornerRadius(dp(12));
         container.setBackground(shape);
 
+        LinearLayout summary = new LinearLayout(this);
+        summary.setOrientation(LinearLayout.HORIZONTAL);
+        summary.setGravity(Gravity.TOP);
+
+        ImageView thumbnail = new ImageView(this);
+        thumbnail.setScaleType(ImageView.ScaleType.CENTER);
+        thumbnail.setImageResource(android.R.drawable.ic_media_play);
+        thumbnail.setColorFilter(secondaryText);
+        thumbnail.setContentDescription("Thumbnail for " + displayName(record));
+        GradientDrawable thumbnailBackground = new GradientDrawable();
+        thumbnailBackground.setColor(dark ? Color.rgb(24, 24, 24) : Color.rgb(225, 225, 225));
+        thumbnailBackground.setCornerRadius(dp(8));
+        thumbnail.setBackground(thumbnailBackground);
+        thumbnail.setClipToOutline(true);
+        summary.addView(thumbnail, new LinearLayout.LayoutParams(dp(144), dp(81)));
+        loadThumbnail(thumbnail, record);
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        );
+        detailsParams.leftMargin = dp(12);
+        summary.addView(details, detailsParams);
+
         TextView filename = text(displayName(record), 16, primaryText);
         filename.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         filename.setMaxLines(2);
-        container.addView(filename, wrap());
+        details.addView(filename, wrap());
 
         TextView status = text(statusText(record), 14, secondaryText);
         LinearLayout.LayoutParams statusParams = wrap();
         statusParams.topMargin = dp(6);
-        container.addView(status, statusParams);
+        details.addView(status, statusParams);
+
+        TextView date = text(
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                        .format(new Date(record.createdAt)),
+                12,
+                secondaryText
+        );
+        LinearLayout.LayoutParams dateParams = wrap();
+        dateParams.topMargin = dp(8);
+        details.addView(date, dateParams);
+        container.addView(summary, wrap());
 
         if (CobaltDownloadRepository.STATE_AUTHORIZING.equals(record.state)
                 || CobaltDownloadRepository.STATE_PREPARING.equals(record.state)
@@ -209,16 +278,6 @@ public final class CobaltDownloadsActivity extends Activity {
             container.addView(progress, progressParams);
         }
 
-        TextView date = text(
-                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-                        .format(new Date(record.createdAt)),
-                12,
-                secondaryText
-        );
-        LinearLayout.LayoutParams dateParams = wrap();
-        dateParams.topMargin = dp(8);
-        container.addView(date, dateParams);
-
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.END);
         LinearLayout.LayoutParams actionsParams = wrap();
@@ -235,6 +294,137 @@ public final class CobaltDownloadsActivity extends Activity {
             container.addView(actions, actionsParams);
         }
         return container;
+    }
+
+    private void loadThumbnail(
+            ImageView imageView,
+            CobaltDownloadRepository.Record record
+    ) {
+        String videoId = videoIdFrom(record.sourceUrl);
+        if (videoId == null) {
+            return;
+        }
+        imageView.setTag(videoId);
+
+        Bitmap cached = THUMBNAIL_CACHE.get(videoId);
+        if (cached != null) {
+            applyThumbnail(imageView, videoId, cached);
+            return;
+        }
+        if (THUMBNAIL_FAILURES.contains(videoId) || !THUMBNAILS_LOADING.add(videoId)) {
+            return;
+        }
+
+        File cacheFile = new File(
+                new File(getCacheDir(), "cobalt-thumbnails"),
+                videoId + ".jpg"
+        );
+        THUMBNAIL_EXECUTOR.execute(() -> {
+            Bitmap bitmap = null;
+            try {
+                if (cacheFile.isFile()) {
+                    bitmap = BitmapFactory.decodeFile(cacheFile.getAbsolutePath());
+                    if (bitmap == null) {
+                        //noinspection ResultOfMethodCallIgnored
+                        cacheFile.delete();
+                    }
+                }
+                if (bitmap == null) {
+                    bitmap = downloadThumbnail(videoId);
+                    if (bitmap != null) {
+                        cacheThumbnail(cacheFile, bitmap);
+                    }
+                }
+            } catch (Exception ignored) {
+                // Keep the placeholder when a thumbnail is unavailable.
+            } finally {
+                THUMBNAILS_LOADING.remove(videoId);
+            }
+
+            if (bitmap == null) {
+                THUMBNAIL_FAILURES.add(videoId);
+                return;
+            }
+            THUMBNAIL_CACHE.put(videoId, bitmap);
+            Bitmap loaded = bitmap;
+            handler.post(() -> {
+                if (isDestroyed()) {
+                    return;
+                }
+                applyThumbnail(imageView, videoId, loaded);
+                if (resumed) {
+                    lastSignature = "";
+                    refresh();
+                }
+            });
+        });
+    }
+
+    private Bitmap downloadThumbnail(String videoId) throws Exception {
+        URL url = new URL("https://i.ytimg.com/vi/" + videoId + "/mqdefault.jpg");
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(15_000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("Accept", "image/jpeg,image/*;q=0.8");
+        connection.setRequestProperty("User-Agent", "Cobalt-Morphe/1.0");
+        try {
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                return null;
+            }
+            long length = connection.getContentLengthLong();
+            if (length > MAX_THUMBNAIL_BYTES) {
+                return null;
+            }
+            try (InputStream input = connection.getInputStream()) {
+                return BitmapFactory.decodeStream(input);
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private void cacheThumbnail(File cacheFile, Bitmap bitmap) {
+        File directory = cacheFile.getParentFile();
+        if (directory == null
+                || (!directory.isDirectory() && !directory.mkdirs())) {
+            return;
+        }
+        try (FileOutputStream output = new FileOutputStream(cacheFile)) {
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)) {
+                //noinspection ResultOfMethodCallIgnored
+                cacheFile.delete();
+            }
+        } catch (Exception ignored) {
+            // Disk caching is an optimization; the in-memory image still works.
+        }
+    }
+
+    private void applyThumbnail(ImageView imageView, String videoId, Bitmap bitmap) {
+        if (!videoId.equals(imageView.getTag())) {
+            return;
+        }
+        imageView.clearColorFilter();
+        imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        imageView.setImageBitmap(bitmap);
+    }
+
+    private String videoIdFrom(String sourceUrl) {
+        if (sourceUrl == null || sourceUrl.isEmpty()) {
+            return null;
+        }
+        try {
+            Uri uri = Uri.parse(sourceUrl);
+            String videoId = uri.getQueryParameter("v");
+            if (videoId == null && "youtu.be".equalsIgnoreCase(uri.getHost())) {
+                videoId = uri.getLastPathSegment();
+            }
+            return videoId != null && videoId.matches("[A-Za-z0-9_-]{6,20}")
+                    ? videoId
+                    : null;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private String statusText(CobaltDownloadRepository.Record record) {
