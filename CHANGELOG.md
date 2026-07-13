@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.1...v1.4.2) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* read Morphe download settings ([ba19764](https://github.com/skulldogged/cobalt-morphe/commit/ba1976464a2e1635db79efd0ebb3b39a5e0bc8a9))
+
 ## [1.4.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.0...v1.4.1) (2026-07-13)
 
 ### 🐛 Bug Fixes
