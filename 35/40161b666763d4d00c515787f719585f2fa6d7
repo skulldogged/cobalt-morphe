@@ -1,0 +1,48 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadsActivity.java
+  s_12a43715d907c7::t_15c8df727be56b 187-188,196-197,240-242
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/CobaltDownloadsPatch.kt
+  s_12a43715d907c7::t_751374cae1afca 124,126,128-137
+  s_12a43715d907c7::t_b3c54f6ddf1611 57-61,67-69,72-79
+docs/RESEARCH.md
+  s_12a43715d907c7::t_375b2e51298549 23-34,38-40
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltTurnstileActivity.java
+  s_12a43715d907c7::t_792f03b696cadd 7,25-26,31,56,75,305-316,325-330
+  s_12a43715d907c7::t_a8a4c84b0395c0 1-6,8-24,27-30,32-55,57-74,76-304,317-324,331-349
+README.md
+  s_12a43715d907c7::t_375b2e51298549 4,15-19,21,23
+  s_12a43715d907c7::t_3882acb4ee32e1 36,42-55
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloader.java
+  s_12a43715d907c7::t_76a8fa62d5ced7 33-36,44,49-56,65-91,114-131
+  s_12a43715d907c7::t_2a01c36997e74e 132
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadRepository.java
+  s_12a43715d907c7::t_15c8df727be56b 18,58-63
+  s_12a43715d907c7::t_14c892de510b43 64-66
+  s_12a43715d907c7::t_00c745947bb40b 67
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltClient.java
+  s_12a43715d907c7::t_fdee34b311d187 21-25,42-44,46-48,107-116
+  s_12a43715d907c7::t_2d49718b044d5e 38-41,45,49-51,60-61
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltSettings.java
+  s_12a43715d907c7::t_26d6d4126e58ed 13-14,40-53,59,63
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltSessionManager.java
+  s_12a43715d907c7::t_02418430874ba7 1-44
+extensions/extension/src/main/AndroidManifest.xml
+  s_12a43715d907c7::t_b3c54f6ddf1611 11-13
+patches/build.gradle.kts
+  s_12a43715d907c7::t_5ee42b9afddf42 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "3540161b666763d4d00c515787f719585f2fa6d7",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
