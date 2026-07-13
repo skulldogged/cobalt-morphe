@@ -2,7 +2,6 @@ package dev.skulldogged.cobalt.extension;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.preference.PreferenceManager;
 
 import java.net.URL;
 import java.util.Arrays;
@@ -12,6 +11,8 @@ import java.util.Set;
 final class CobaltSettings {
     static final String DEFAULT_API_URL = "";
     static final String DEFAULT_TURNSTILE_URL = "";
+
+    private static final String PREFERENCES_FILE = "morphe_prefs";
 
     private static final Set<String> QUALITIES = new HashSet<>(Arrays.asList(
             "max", "4320", "2160", "1440", "1080", "720", "480", "360", "240", "144"
@@ -29,8 +30,9 @@ final class CobaltSettings {
     }
 
     static void initialize(Context context) {
-        preferences = PreferenceManager.getDefaultSharedPreferences(
-                context.getApplicationContext()
+        preferences = context.getApplicationContext().getSharedPreferences(
+                PREFERENCES_FILE,
+                Context.MODE_PRIVATE
         );
     }
 
