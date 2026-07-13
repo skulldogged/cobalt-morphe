@@ -1,0 +1,21 @@
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/CobaltDownloadsPatch.kt
+  s_12a43715d907c7::t_0cd8257f6387d9 75-76,85,89-90,95-97,104-106,114,116,118-119,123,125-126,130,132-133,139-140
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltListPreference.java
+  s_12a43715d907c7::t_0cd8257f6387d9 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "ea85a937beccc39ea3a7530920e08f0dfc523c01",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
