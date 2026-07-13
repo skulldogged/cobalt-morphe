@@ -5,10 +5,12 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
@@ -17,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.util.LruCache;
 import android.util.TypedValue;
 import android.webkit.MimeTypeMap;
@@ -26,6 +29,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ProgressBar;
@@ -49,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class CobaltDownloadsActivity extends Activity {
+    private static final String ORIGINAL_PACKAGE = "com.google.android.youtube";
     private static final long REFRESH_INTERVAL_MS = 500;
     private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
     private static final int MENU_INFO = 1;
@@ -88,17 +93,26 @@ public final class CobaltDownloadsActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Boolean morpheDarkMode = morpheDarkMode();
+        if (morpheDarkMode != null) {
+            setTheme(morpheDarkMode
+                    ? android.R.style.Theme_Material_NoActionBar
+                    : android.R.style.Theme_Material_Light_NoActionBar);
+        }
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        boolean night = (getResources().getConfiguration().uiMode
+        boolean darkMode = morpheDarkMode != null
+                ? morpheDarkMode
+                : (getResources().getConfiguration().uiMode
                 & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        background = themeColor(android.R.attr.colorBackground,
-                night ? Color.BLACK : Color.WHITE);
-        primaryText = themeColor(android.R.attr.textColorPrimary,
-                isDark(background) ? Color.WHITE : Color.rgb(15, 15, 15));
-        secondaryText = themeColor(android.R.attr.textColorSecondary,
-                isDark(background) ? Color.rgb(185, 185, 185) : Color.rgb(95, 95, 95));
+        int themedFallback = themeColor(android.R.attr.colorBackground,
+                darkMode ? Color.BLACK : Color.WHITE);
+        background = namedColor(darkMode ? "yt_black1" : "yt_white1", themedFallback);
+        primaryText = isDark(background) ? Color.WHITE : Color.rgb(15, 15, 15);
+        secondaryText = isDark(background)
+                ? Color.rgb(185, 185, 185)
+                : Color.rgb(95, 95, 95);
         card = blend(background, primaryText, isDark(background) ? 0.09f : 0.06f);
 
         getWindow().setStatusBarColor(background);
@@ -126,8 +140,11 @@ public final class CobaltDownloadsActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(dp(4), 0, dp(16), 0);
 
-        TextView back = text("←", 28, primaryText);
-        back.setGravity(Gravity.CENTER);
+        ImageButton back = new ImageButton(this);
+        back.setImageDrawable(themeDrawable(android.R.attr.homeAsUpIndicator));
+        back.setColorFilter(primaryText);
+        back.setBackgroundColor(Color.TRANSPARENT);
+        back.setScaleType(ImageView.ScaleType.CENTER);
         back.setContentDescription("Back");
         back.setOnClickListener(ignored -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(56)));
@@ -219,7 +236,6 @@ public final class CobaltDownloadsActivity extends Activity {
     private View buildCard(CobaltDownloadRepository.Record record) {
         FrameLayout container = new FrameLayout(this);
         container.setClipToOutline(true);
-        container.setMinimumHeight(dp(140));
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(card);
         shape.setCornerRadius(dp(14));
@@ -258,6 +274,8 @@ public final class CobaltDownloadsActivity extends Activity {
         details.addView(filename, wrap());
 
         TextView status = text(statusText(record), 14, Color.rgb(230, 230, 230));
+        status.setMaxLines(2);
+        status.setEllipsize(TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams statusParams = wrap();
         statusParams.topMargin = dp(6);
         details.addView(status, statusParams);
@@ -747,7 +765,10 @@ public final class CobaltDownloadsActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams cardParams() {
-        LinearLayout.LayoutParams params = wrap();
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(160)
+        );
         params.bottomMargin = dp(12);
         return params;
     }
@@ -772,6 +793,41 @@ public final class CobaltDownloadsActivity extends Activity {
                 && value.type <= TypedValue.TYPE_LAST_COLOR_INT
                 ? value.data
                 : fallback;
+    }
+
+    private int namedColor(String name, int fallback) {
+        int identifier = getResources().getIdentifier(name, "color", getPackageName());
+        if (identifier == 0) {
+            identifier = getResources().getIdentifier(name, "color", ORIGINAL_PACKAGE);
+        }
+        if (identifier == 0) {
+            return fallback;
+        }
+        try {
+            return getResources().getColor(identifier, getTheme());
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
+    private Drawable themeDrawable(int attribute) {
+        TypedArray attributes = getTheme().obtainStyledAttributes(new int[]{attribute});
+        try {
+            Drawable drawable = attributes.getDrawable(0);
+            return drawable == null ? null : drawable.mutate();
+        } finally {
+            attributes.recycle();
+        }
+    }
+
+    private Boolean morpheDarkMode() {
+        try {
+            Class<?> utils = Class.forName("app.morphe.extension.shared.Utils");
+            Object value = utils.getMethod("isDarkModeEnabled").invoke(null);
+            return value instanceof Boolean ? (Boolean) value : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private boolean isDark(int color) {
