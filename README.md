@@ -1,9 +1,10 @@
 # Cobalt Downloads for Morphe
 
 A custom Morphe patch bundle that replaces YouTube's in-app **Download** action
-with a direct request to a private cobalt instance. The returned file is queued
-with Android's system `DownloadManager`, so the transfer continues outside the
-YouTube process and appears in the normal Downloads folder and notifications.
+with a direct request to a private cobalt instance. For high-quality YouTube
+videos, the patch downloads cobalt's separate video and audio tunnels in a
+foreground service, then performs a copy-only remux into a finalized MP4 in the
+normal Downloads folder.
 
 This project uses code and fingerprints adapted from
 [MorpheApp/morphe-patches](https://github.com/MorpheApp/morphe-patches).
@@ -13,21 +14,24 @@ This project uses code and fingerprints adapted from
 1. Tap **Download** on a regular YouTube video.
 2. The injected extension posts the video URL to
    `https://cobalt.skulldogged.dev/api/` on a background thread.
-3. A cobalt `tunnel` or `redirect` response is immediately queued with Android
-   `DownloadManager`.
-4. YouTube shows a short success or failure toast.
+3. A cobalt `local-processing` merge response is downloaded with native
+   progress reporting.
+4. Android copies the AV1 video and Opus audio samples into a finalized,
+   seekable MP4 without transcoding them.
+5. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
+   system `DownloadManager`.
 
 The first milestone intentionally uses fixed request settings:
 
 - video and audio (`downloadMode: auto`)
-- up to 1080p
-- H.264 in MP4
+- up to 1440p
+- AV1 video and Opus audio in MP4
 - pretty filenames
-- local processing disabled
+- local processing preferred
 
-Picker and local-processing responses are reported as unsupported instead of
-silently choosing or attempting an on-device transcode. Only HTTPS download
-URLs are accepted.
+Picker responses and local-processing operations other than a two-stream merge
+are reported as unsupported. Only HTTPS download URLs are accepted. The native
+AV1/Opus MP4 remux path requires Android 14 or newer.
 
 ## Available patches
 
@@ -80,11 +84,15 @@ kept aligned with the upstream download-button fingerprint.
 - `CobaltDownloadsPatch.kt` injects application-context initialization and the
   download-button early return.
 - `CobaltClient.java` owns the cobalt JSON request and response parsing.
-- `CobaltDownloader.java` owns threading, user feedback, filename sanitizing,
-  URL validation, and `DownloadManager` enqueueing.
+- `CobaltDownloader.java` starts the foreground download flow and prevents
+  accidental duplicate jobs.
+- `CobaltDownloadService.java` owns tunnel downloads, progress notifications,
+  temporary storage, the native AV1/Opus MP4 remux, and direct-response
+  `DownloadManager` fallback.
 
-No media bytes pass through the YouTube process. The injected code only obtains
-the short-lived result URL and hands it to Android's download service.
+Merged media is processed inside a foreground service running in YouTube's
+process. Encoded samples are copied rather than decoded or re-encoded, and the
+temporary component files are removed when the job finishes.
 
 ## License
 

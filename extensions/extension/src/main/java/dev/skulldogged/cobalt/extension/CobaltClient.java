@@ -1,6 +1,7 @@
 package dev.skulldogged.cobalt.extension;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -9,6 +10,8 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 final class CobaltClient {
     private static final String API_URL = "https://cobalt.skulldogged.dev/api/";
@@ -20,11 +23,13 @@ final class CobaltClient {
         JSONObject requestJson = new JSONObject()
                 .put("url", sourceUrl)
                 .put("downloadMode", "auto")
-                .put("videoQuality", "1080")
-                .put("youtubeVideoCodec", "h264")
+                .put("videoQuality", "1440")
+                .put("youtubeVideoCodec", "av1")
                 .put("youtubeVideoContainer", "mp4")
                 .put("filenameStyle", "pretty")
-                .put("localProcessing", "disabled");
+                .put("localProcessing", "preferred")
+                .put("allowH265", true)
+                .put("convertGif", true);
 
         HttpURLConnection connection =
                 (HttpURLConnection) new URL(API_URL).openConnection();
@@ -71,7 +76,7 @@ final class CobaltClient {
                 throw new CobaltException("cobalt response did not contain a download URL");
             }
 
-            return new CobaltResponse(
+            return CobaltResponse.direct(
                     url,
                     json.optString("filename", "cobalt-download.mp4")
             );
@@ -88,7 +93,38 @@ final class CobaltClient {
         }
 
         if ("local-processing".equals(status)) {
-            throw new CobaltException("cobalt requested unsupported local processing");
+            String type = json.optString("type");
+            if (!"merge".equals(type)) {
+                throw new CobaltException(
+                        "unsupported cobalt local-processing type '" + type + "'"
+                );
+            }
+
+            JSONObject output = json.optJSONObject("output");
+            String filename = output == null
+                    ? ""
+                    : output.optString("filename");
+            String mimeType = output == null
+                    ? ""
+                    : output.optString("type");
+            JSONArray tunnelArray = json.optJSONArray("tunnel");
+
+            if (!"video/mp4".equalsIgnoreCase(mimeType)
+                    || filename.isEmpty()
+                    || tunnelArray == null
+                    || tunnelArray.length() != 2) {
+                throw new CobaltException("invalid cobalt merge response");
+            }
+
+            List<String> tunnels = new ArrayList<>(2);
+            for (int i = 0; i < tunnelArray.length(); i++) {
+                String tunnel = tunnelArray.optString(i);
+                if (tunnel.isEmpty()) {
+                    throw new CobaltException("cobalt merge response contained an empty tunnel");
+                }
+                tunnels.add(tunnel);
+            }
+            return CobaltResponse.merge(tunnels, filename);
         }
 
         throw new CobaltException(

@@ -1,0 +1,581 @@
+package dev.skulldogged.cobalt.extension;
+
+import android.app.DownloadManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.Service;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.media.MediaCodec;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMuxer;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Environment;
+import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
+import android.provider.MediaStore;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.ByteBuffer;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+public final class CobaltDownloadService extends Service {
+    static final String EXTRA_SOURCE_URL = "source_url";
+
+    private static final String CHANNEL_ID = "cobalt_downloads";
+    private static final int NOTIFICATION_ID = 0x434F4241;
+    private static final int BUFFER_SIZE = 256 * 1024;
+    private static final ExecutorService JOB_EXECUTOR = Executors.newSingleThreadExecutor();
+
+    private NotificationManager notificationManager;
+    private int smallIcon;
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        notificationManager = getSystemService(NotificationManager.class);
+        smallIcon = getApplicationInfo().icon;
+        if (smallIcon == 0) {
+            smallIcon = android.R.drawable.stat_sys_download;
+        }
+        createNotificationChannel();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        String sourceUrl = intent == null ? null : intent.getStringExtra(EXTRA_SOURCE_URL);
+        startForeground(
+                NOTIFICATION_ID,
+                buildNotification("Preparing download…", 0, true, true)
+        );
+
+        if (sourceUrl == null || sourceUrl.isEmpty()) {
+            finishWithFailure("No video URL was provided", startId);
+            return START_NOT_STICKY;
+        }
+
+        JOB_EXECUTOR.execute(() -> runDownload(sourceUrl, startId));
+        return START_NOT_STICKY;
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+
+    private void runDownload(String sourceUrl, int startId) {
+        File jobDirectory = new File(
+                getCacheDir(),
+                "cobalt-downloads/" + UUID.randomUUID()
+        );
+
+        try {
+            CobaltResponse response = CobaltClient.request(sourceUrl);
+            if (response.kind == CobaltResponse.Kind.DIRECT) {
+                enqueueDirectDownload(response);
+                finishWithMessage("Download started", startId);
+                return;
+            }
+
+            if (Build.VERSION.SDK_INT < 34) {
+                throw new CobaltException("AV1 MP4 downloads require Android 14 or newer");
+            }
+            if (!jobDirectory.mkdirs() && !jobDirectory.isDirectory()) {
+                throw new CobaltException("Could not create temporary download storage");
+            }
+
+            File videoFile = new File(jobDirectory, "video.part");
+            File audioFile = new File(jobDirectory, "audio.part");
+            ProgressTracker tracker = new ProgressTracker(response.filename);
+            ExecutorService downloads = Executors.newFixedThreadPool(2);
+
+            try {
+                Future<?> video = downloads.submit(() -> {
+                    try {
+                        downloadTunnel(response.tunnels.get(0), videoFile, 0, tracker);
+                    } catch (Exception exception) {
+                        throw new DownloadRuntimeException(exception);
+                    }
+                });
+                Future<?> audio = downloads.submit(() -> {
+                    try {
+                        downloadTunnel(response.tunnels.get(1), audioFile, 1, tracker);
+                    } catch (Exception exception) {
+                        throw new DownloadRuntimeException(exception);
+                    }
+                });
+                waitFor(video);
+                waitFor(audio);
+            } finally {
+                downloads.shutdownNow();
+            }
+
+            updateProgress(response.filename, "Finalizing MP4…", 90, false);
+            remuxToMediaStore(
+                    videoFile,
+                    audioFile,
+                    sanitizeFilename(response.filename),
+                    response.filename
+            );
+            finishWithMessage("Download complete", startId);
+        } catch (Exception exception) {
+            finishWithFailure(safeMessage(exception), startId);
+        } finally {
+            deleteRecursively(jobDirectory);
+        }
+    }
+
+    private void downloadTunnel(
+            String tunnelUrl,
+            File destination,
+            int index,
+            ProgressTracker tracker
+    ) throws Exception {
+        URL url = requireHttps(tunnelUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setConnectTimeout(20_000);
+        connection.setReadTimeout(60_000);
+        connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("Accept", "*/*");
+        connection.setRequestProperty("User-Agent", "Cobalt-Morphe/0.2");
+
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new CobaltException("cobalt tunnel returned HTTP " + status);
+            }
+
+            long expected = connection.getContentLengthLong();
+            if (expected <= 0) {
+                expected = parseLength(connection.getHeaderField("Estimated-Content-Length"));
+            }
+            tracker.setExpected(index, expected);
+
+            byte[] buffer = new byte[BUFFER_SIZE];
+            long received = 0;
+            try (InputStream input = connection.getInputStream();
+                 FileOutputStream output = new FileOutputStream(destination)) {
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                    received += count;
+                    tracker.setReceived(index, received);
+                }
+                output.getFD().sync();
+            }
+
+            if (received == 0) {
+                throw new CobaltException("cobalt returned an empty media stream");
+            }
+            if (connection.getContentLengthLong() > 0
+                    && received != connection.getContentLengthLong()) {
+                throw new CobaltException("cobalt media stream was incomplete");
+            }
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private Uri remuxToMediaStore(
+            File videoFile,
+            File audioFile,
+            String filename,
+            String notificationTitle
+    ) throws Exception {
+        ContentResolver resolver = getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
+        values.put(
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS
+        );
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+
+        Uri collection = MediaStore.Video.Media.getContentUri(
+                MediaStore.VOLUME_EXTERNAL_PRIMARY
+        );
+        Uri outputUri = resolver.insert(collection, values);
+        if (outputUri == null) {
+            throw new CobaltException("Could not create the output file");
+        }
+
+        boolean completed = false;
+        try (ParcelFileDescriptor descriptor = resolver.openFileDescriptor(outputUri, "rw")) {
+            if (descriptor == null) {
+                throw new CobaltException("Could not open the output file");
+            }
+            remux(
+                    videoFile,
+                    audioFile,
+                    descriptor,
+                    notificationTitle
+            );
+            completed = true;
+        } finally {
+            if (!completed) {
+                resolver.delete(outputUri, null, null);
+            }
+        }
+
+        ContentValues publish = new ContentValues();
+        publish.put(MediaStore.MediaColumns.IS_PENDING, 0);
+        resolver.update(outputUri, publish, null, null);
+        return outputUri;
+    }
+
+    private void remux(
+            File videoFile,
+            File audioFile,
+            ParcelFileDescriptor output,
+            String notificationTitle
+    ) throws Exception {
+        MediaExtractor video = new MediaExtractor();
+        MediaExtractor audio = new MediaExtractor();
+        MediaMuxer muxer = null;
+        boolean muxerStarted = false;
+
+        try {
+            video.setDataSource(videoFile.getAbsolutePath());
+            audio.setDataSource(audioFile.getAbsolutePath());
+            int videoSourceTrack = selectTrack(video, true);
+            int audioSourceTrack = selectTrack(audio, false);
+            MediaFormat videoFormat = video.getTrackFormat(videoSourceTrack);
+            MediaFormat audioFormat = audio.getTrackFormat(audioSourceTrack);
+            requireMime(videoFormat, "video/av01", "AV1 video");
+            requireMime(audioFormat, "audio/opus", "Opus audio");
+
+            video.selectTrack(videoSourceTrack);
+            audio.selectTrack(audioSourceTrack);
+
+            muxer = new MediaMuxer(
+                    output.getFileDescriptor(),
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+            );
+            int videoTargetTrack = muxer.addTrack(videoFormat);
+            int audioTargetTrack = muxer.addTrack(audioFormat);
+            muxer.start();
+            muxerStarted = true;
+
+            long duration = Math.max(durationOf(videoFormat), durationOf(audioFormat));
+            long lastUpdate = 0;
+            ByteBuffer sampleBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+            MediaCodec.BufferInfo sampleInfo = new MediaCodec.BufferInfo();
+
+            while (video.getSampleTrackIndex() >= 0 || audio.getSampleTrackIndex() >= 0) {
+                boolean useVideo = audio.getSampleTrackIndex() < 0
+                        || (video.getSampleTrackIndex() >= 0
+                        && video.getSampleTime() <= audio.getSampleTime());
+                MediaExtractor source = useVideo ? video : audio;
+                int targetTrack = useVideo ? videoTargetTrack : audioTargetTrack;
+                long sampleSize = source.getSampleSize();
+                if (sampleSize > Integer.MAX_VALUE) {
+                    throw new CobaltException("A media sample was too large to process");
+                }
+                if (sampleSize > sampleBuffer.capacity()) {
+                    sampleBuffer = ByteBuffer.allocate((int) sampleSize);
+                }
+                sampleBuffer.clear();
+                int size = source.readSampleData(sampleBuffer, 0);
+                if (size < 0) {
+                    source.advance();
+                    continue;
+                }
+
+                int codecFlags = (source.getSampleFlags() & MediaExtractor.SAMPLE_FLAG_SYNC) != 0
+                        ? MediaCodec.BUFFER_FLAG_KEY_FRAME
+                        : 0;
+                sampleInfo.set(0, size, source.getSampleTime(), codecFlags);
+                muxer.writeSampleData(targetTrack, sampleBuffer, sampleInfo);
+
+                long now = System.currentTimeMillis();
+                if (duration > 0 && now - lastUpdate >= 500) {
+                    int remuxProgress = (int) Math.min(
+                            9,
+                            (Math.max(0, source.getSampleTime()) * 9) / duration
+                    );
+                    updateProgress(
+                            notificationTitle,
+                            "Finalizing MP4…",
+                            90 + remuxProgress,
+                            false
+                    );
+                    lastUpdate = now;
+                }
+                source.advance();
+            }
+        } finally {
+            if (muxer != null) {
+                if (muxerStarted) {
+                    muxer.stop();
+                }
+                muxer.release();
+            }
+            video.release();
+            audio.release();
+        }
+    }
+
+    private int selectTrack(MediaExtractor extractor, boolean video) throws Exception {
+        String prefix = video ? "video/" : "audio/";
+        for (int index = 0; index < extractor.getTrackCount(); index++) {
+            String mime = extractor.getTrackFormat(index).getString(MediaFormat.KEY_MIME);
+            if (mime != null && mime.startsWith(prefix)) {
+                return index;
+            }
+        }
+        throw new CobaltException(video ? "Video stream had no video track" : "Audio stream had no audio track");
+    }
+
+    private void requireMime(MediaFormat format, String expected, String label) throws Exception {
+        String actual = format.getString(MediaFormat.KEY_MIME);
+        if (!expected.equalsIgnoreCase(actual)) {
+            throw new CobaltException(
+                    "Expected " + label + " but cobalt returned " + actual
+            );
+        }
+    }
+
+    private long durationOf(MediaFormat format) {
+        return format.containsKey(MediaFormat.KEY_DURATION)
+                ? format.getLong(MediaFormat.KEY_DURATION)
+                : -1;
+    }
+
+    private void enqueueDirectDownload(CobaltResponse response) throws Exception {
+        URL url = requireHttps(response.url);
+        String filename = sanitizeFilename(response.filename);
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.toString()))
+                .setTitle(filename)
+                .setDescription("Downloaded through cobalt")
+                .setNotificationVisibility(
+                        DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename);
+        DownloadManager manager = getSystemService(DownloadManager.class);
+        if (manager == null) {
+            throw new CobaltException("Android DownloadManager is unavailable");
+        }
+        manager.enqueue(request);
+    }
+
+    private URL requireHttps(String value) throws Exception {
+        URL url = new URL(value);
+        if (!"https".equalsIgnoreCase(url.getProtocol())) {
+            throw new CobaltException("cobalt returned a non-HTTPS URL");
+        }
+        return url;
+    }
+
+    private void waitFor(Future<?> future) throws Exception {
+        try {
+            future.get();
+        } catch (Exception exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof DownloadRuntimeException && cause.getCause() instanceof Exception) {
+                throw (Exception) cause.getCause();
+            }
+            throw exception;
+        }
+    }
+
+    private long parseLength(String value) {
+        if (value == null) {
+            return -1;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private String sanitizeFilename(String filename) {
+        String safe = filename == null ? "" : filename
+                .replaceAll("[\\\\/:*?\"<>|]", "_")
+                .replaceAll("[\\r\\n]", " ")
+                .trim();
+        if (safe.isEmpty() || ".".equals(safe) || "..".equals(safe)) {
+            return "cobalt-download.mp4";
+        }
+        if (!safe.toLowerCase(Locale.US).endsWith(".mp4")) {
+            safe += ".mp4";
+        }
+        if (safe.length() > 180) {
+            safe = safe.substring(0, 176).trim() + ".mp4";
+        }
+        return safe;
+    }
+
+    private String safeMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            message = exception.getClass().getSimpleName();
+        }
+        return message;
+    }
+
+    private void createNotificationChannel() {
+        if (notificationManager == null) {
+            return;
+        }
+        NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "Cobalt downloads",
+                NotificationManager.IMPORTANCE_LOW
+        );
+        channel.setDescription("Progress for downloads prepared through cobalt");
+        notificationManager.createNotificationChannel(channel);
+    }
+
+    private Notification buildNotification(
+            String text,
+            int progress,
+            boolean indeterminate,
+            boolean ongoing
+    ) {
+        return buildNotification("Cobalt download", text, progress, indeterminate, ongoing);
+    }
+
+    private Notification buildNotification(
+            String title,
+            String text,
+            int progress,
+            boolean indeterminate,
+            boolean ongoing
+    ) {
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
+                .setSmallIcon(smallIcon)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setOnlyAlertOnce(true)
+                .setOngoing(ongoing)
+                .setAutoCancel(!ongoing)
+                .setCategory(Notification.CATEGORY_PROGRESS);
+        if (ongoing) {
+            builder.setProgress(100, progress, indeterminate);
+        }
+        return builder.build();
+    }
+
+    private void updateProgress(String title, String text, int progress, boolean indeterminate) {
+        if (notificationManager != null) {
+            notificationManager.notify(
+                    NOTIFICATION_ID,
+                    buildNotification(title, text, progress, indeterminate, true)
+            );
+        }
+    }
+
+    private void finishWithMessage(String message, int startId) {
+        stopForeground(STOP_FOREGROUND_DETACH);
+        if (notificationManager != null) {
+            notificationManager.notify(
+                    NOTIFICATION_ID,
+                    buildNotification(
+                            "Cobalt download",
+                            message,
+                            100,
+                            false,
+                            false
+                    )
+            );
+        }
+        CobaltDownloader.onJobFinished();
+        stopSelf(startId);
+    }
+
+    private void finishWithFailure(String message, int startId) {
+        stopForeground(STOP_FOREGROUND_DETACH);
+        if (notificationManager != null) {
+            notificationManager.notify(
+                    NOTIFICATION_ID,
+                    buildNotification(
+                            "Cobalt download failed",
+                            message,
+                            0,
+                            false,
+                            false
+                    )
+            );
+        }
+        CobaltDownloader.onJobFinished();
+        stopSelf(startId);
+    }
+
+    private void deleteRecursively(File file) {
+        if (file == null || !file.exists()) {
+            return;
+        }
+        File[] children = file.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+    }
+
+    private final class ProgressTracker {
+        private final long[] expected = {-1, -1};
+        private final long[] received = {0, 0};
+        private final String title;
+        private long lastUpdate;
+
+        ProgressTracker(String title) {
+            this.title = title;
+        }
+
+        synchronized void setExpected(int index, long value) {
+            expected[index] = value;
+            publish(true);
+        }
+
+        synchronized void setReceived(int index, long value) {
+            received[index] = value;
+            publish(false);
+        }
+
+        private void publish(boolean force) {
+            long now = System.currentTimeMillis();
+            if (!force && now - lastUpdate < 500) {
+                return;
+            }
+            lastUpdate = now;
+
+            if (expected[0] <= 0 || expected[1] <= 0) {
+                updateProgress(title, "Downloading video and audio…", 0, true);
+                return;
+            }
+            long totalExpected = expected[0] + expected[1];
+            long totalReceived = received[0] + received[1];
+            int progress = (int) Math.min(90, (totalReceived * 90) / totalExpected);
+            updateProgress(
+                    title,
+                    "Downloading video and audio… " + progress + "%",
+                    progress,
+                    false
+            );
+        }
+    }
+
+    private static final class DownloadRuntimeException extends RuntimeException {
+        DownloadRuntimeException(Exception cause) {
+            super(cause);
+        }
+    }
+}
