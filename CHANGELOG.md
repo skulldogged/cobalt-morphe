@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.0...v1.4.1) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* support Android 13 remuxing ([02e549c](https://github.com/skulldogged/cobalt-morphe/commit/02e549c8f2f801d631bf1df2cd0aa331b033a19e))
+
 ## [1.4.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.3.0...v1.4.0) (2026-07-13)
 
 ### ✨ New Features
