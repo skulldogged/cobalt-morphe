@@ -1,0 +1,34 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltClient.java
+  s_12a43715d907c7::t_7804b304f9a0d8 4,13-14,26-27,30-32,79,96-127
+extensions/extension/src/main/AndroidManifest.xml
+  s_12a43715d907c7::t_7804b304f9a0d8 3-11
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadService.java
+  s_12a43715d907c7::t_05221c60ab3e33 1-87,89-125,127-131,133-482,484-496,498-514,516-581
+  s_12a43715d907c7::t_9277a2e30b1c43 88,126,132,483,497,515
+patches/src/main/kotlin/dev/skulldogged/cobalt/patches/CobaltDownloadsPatch.kt
+  s_12a43715d907c7::t_ef52eeb952f639 6-7,12-52,59
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloader.java
+  s_12a43715d907c7::t_7804b304f9a0d8 4,36-40
+  s_12a43715d907c7::t_173d0c16fe7d2f 13,31-32,41-47,57-58
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltResponse.java
+  s_12a43715d907c7::t_7804b304f9a0d8 3-5,7-12,14,17-18,20,23-40
+README.md
+  s_12a43715d907c7::t_12480af7c36127 4-7,17-22,27
+  s_12a43715d907c7::t_2c9190ccab1065 28,30,32-34,87-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "6985c8086f9fa89a790f74353ef4262113027a70",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
