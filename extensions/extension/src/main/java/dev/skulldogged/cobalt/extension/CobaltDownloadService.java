@@ -4,6 +4,7 @@ import android.app.DownloadManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -90,7 +91,7 @@ public final class CobaltDownloadService extends Service {
             CobaltResponse response = CobaltClient.request(sourceUrl);
             if (response.kind == CobaltResponse.Kind.DIRECT) {
                 enqueueDirectDownload(response);
-                finishWithMessage("Download started", startId);
+                finishWithoutResult(startId);
                 return;
             }
 
@@ -128,13 +129,14 @@ public final class CobaltDownloadService extends Service {
             }
 
             updateProgress(response.filename, "Finalizing MP4…", 90, false);
-            remuxToMediaStore(
+            String filename = sanitizeFilename(response.filename);
+            Uri outputUri = remuxToMediaStore(
                     videoFile,
                     audioFile,
-                    sanitizeFilename(response.filename),
+                    filename,
                     response.filename
             );
-            finishWithMessage("Download complete", startId);
+            finishWithSuccess(filename, outputUri, startId);
         } catch (Exception exception) {
             finishWithFailure(safeMessage(exception), startId);
         } finally {
@@ -494,19 +496,40 @@ public final class CobaltDownloadService extends Service {
         }
     }
 
-    private void finishWithMessage(String message, int startId) {
+    private void finishWithoutResult(int startId) {
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        if (notificationManager != null) {
+            notificationManager.cancel(NOTIFICATION_ID);
+        }
+        CobaltDownloader.onJobFinished();
+        stopSelf(startId);
+    }
+
+    private void finishWithSuccess(String filename, Uri outputUri, int startId) {
+        Intent viewIntent = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(outputUri, "video/mp4")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        PendingIntent contentIntent = PendingIntent.getActivity(
+                this,
+                outputUri.hashCode(),
+                viewIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         stopForeground(STOP_FOREGROUND_REMOVE);
         if (notificationManager != null) {
             notificationManager.cancel(NOTIFICATION_ID);
             notificationManager.notify(
                     RESULT_NOTIFICATION_ID,
-                    buildNotification(
-                            "Cobalt download",
-                            message,
-                            100,
-                            false,
-                            false
-                    )
+                    new Notification.Builder(this, CHANNEL_ID)
+                            .setSmallIcon(smallIcon)
+                            .setContentTitle(filename)
+                            .setContentText("Download complete")
+                            .setOnlyAlertOnce(true)
+                            .setAutoCancel(true)
+                            .setCategory(Notification.CATEGORY_STATUS)
+                            .setContentIntent(contentIntent)
+                            .build()
             );
         }
         CobaltDownloader.onJobFinished();
