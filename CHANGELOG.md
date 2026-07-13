@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.2.0...v1.2.1) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* avoid unregistered settings resources ([ea85a93](https://github.com/skulldogged/cobalt-morphe/commit/ea85a937beccc39ea3a7530920e08f0dfc523c01))
+
 ## [1.2.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.1.4...v1.2.0) (2026-07-13)
 
 ### ✨ New Features
