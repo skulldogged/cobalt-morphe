@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.0.0...v1.1.0) (2026-07-13)
+
+### ✨ New Features
+
+* add native AV1 download processing ([6985c80](https://github.com/skulldogged/cobalt-morphe/commit/6985c8086f9fa89a790f74353ef4262113027a70))
+
 ## 1.0.0 (2026-07-12)
 
 ### 🐛 Bug Fixes
