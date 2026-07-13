@@ -43,7 +43,7 @@ AV1/Opus MP4 remux path requires Android 14 or newer.
 ## Available patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.1.4](https://github.com/skulldogged/cobalt-morphe/releases/tag/v1.1.4)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
+> **[v1.2.0](https://github.com/skulldogged/cobalt-morphe/releases/tag/v1.2.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
 <details open>
 <summary>📦 YouTube&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
