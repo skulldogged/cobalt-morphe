@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.2.1...v1.3.0) (2026-07-13)
+
+### ✨ New Features
+
+* add native downloads manager ([4cfefa1](https://github.com/skulldogged/cobalt-morphe/commit/4cfefa1206696ed97901c288630129b0ab6f8dbb))
+
 ## [1.2.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.2.0...v1.2.1) (2026-07-13)
 
 ### 🐛 Bug Fixes
