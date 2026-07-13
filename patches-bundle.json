@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-13T21:51:47",
-  "description": "## [1.7.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.6.0...v1.7.0) (2026-07-13)\n\n### ✨ New Features\n\n* integrate downloads page styling ([45d0249](https://github.com/skulldogged/cobalt-morphe/commit/45d024972282b317296251090c22d828e913884d))",
-  "download_url": "https://github.com/skulldogged/cobalt-morphe/releases/download/v1.7.0/patches-1.7.0.mpp",
+  "created_at": "2026-07-13T22:07:37",
+  "description": "## [1.7.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.0...v1.7.1) (2026-07-13)\n\n### 🐛 Bug Fixes\n\n* correct downloads page layout and theme ([70750b4](https://github.com/skulldogged/cobalt-morphe/commit/70750b452316ab0e223d7d4ffc9109a6f6ba0ade))",
+  "download_url": "https://github.com/skulldogged/cobalt-morphe/releases/download/v1.7.1/patches-1.7.1.mpp",
   "signature_download_url": "",
-  "version": "1.7.0"
+  "version": "1.7.1"
 }

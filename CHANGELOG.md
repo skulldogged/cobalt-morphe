@@ -1,3 +1,9 @@
+## [1.7.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.7.0...v1.7.1) (2026-07-13)
+
+### 🐛 Bug Fixes
+
+* correct downloads page layout and theme ([70750b4](https://github.com/skulldogged/cobalt-morphe/commit/70750b452316ab0e223d7d4ffc9109a6f6ba0ade))
+
 ## [1.7.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.6.0...v1.7.0) (2026-07-13)
 
 ### ✨ New Features
