@@ -1,3 +1,9 @@
+## [1.5.0](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.2...v1.5.0) (2026-07-13)
+
+### ✨ New Features
+
+* add audio-only downloads ([c4bbec8](https://github.com/skulldogged/cobalt-morphe/commit/c4bbec8b62ea5442700113a4ddf1db7ce197af26))
+
 ## [1.4.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.4.1...v1.4.2) (2026-07-13)
 
 ### 🐛 Bug Fixes
