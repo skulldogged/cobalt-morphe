@@ -38,6 +38,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -62,12 +63,13 @@ import java.util.regex.Pattern;
 public final class CobaltDownloadsActivity extends Activity {
     private static final String ORIGINAL_PACKAGE = "com.google.android.youtube";
     private static final String TITLE_PREFERENCES = "cobalt_video_titles";
-    private static final String METADATA_PREFERENCES = "cobalt_video_metadata";
+    private static final String METADATA_PREFERENCES = "cobalt_video_metadata_v2";
     private static final long REFRESH_INTERVAL_MS = 500;
     private static final int MAX_THUMBNAIL_BYTES = 4 * 1024 * 1024;
     private static final int MAX_AVATAR_BYTES = 2 * 1024 * 1024;
     private static final int MAX_TITLE_RESPONSE_CHARS = 64 * 1024;
     private static final int MAX_CHANNEL_RESPONSE_CHARS = 2 * 1024 * 1024;
+    private static final int MAX_MUSIC_RESPONSE_CHARS = 1024 * 1024;
     private static final int MENU_INFO = 1;
     private static final int MENU_DELETE = 2;
     private static final int MENU_RETRY = 3;
@@ -113,6 +115,13 @@ public final class CobaltDownloadsActivity extends Activity {
                     + "\\bcontent=[\"']([^\"']+)[\"'][^>]*>",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern MUSIC_API_KEY = Pattern.compile(
+            "INNERTUBE_API_KEY\\\\?\"\\s*:\\s*\\\\?\"([^\"\\\\]+)"
+    );
+    private static final Pattern MUSIC_CLIENT_VERSION = Pattern.compile(
+            "INNERTUBE_CLIENT_VERSION\\\\?\"\\s*:\\s*\\\\?\"([^\"\\\\]+)"
+    );
+    private static volatile MusicClientConfig musicClientConfig;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshTask = new Runnable() {
@@ -578,6 +587,9 @@ public final class CobaltDownloadsActivity extends Activity {
     }
 
     private String optional(JSONObject json, String key) {
+        if (json == null) {
+            return null;
+        }
         String value = json.optString(key, "").trim();
         return value.isEmpty() ? null : value;
     }
@@ -634,10 +646,257 @@ public final class CobaltDownloadsActivity extends Activity {
                 channelName = null;
                 channelUrl = null;
             }
-            return new VideoMetadata(title, channelName, channelUrl, null);
+            VideoMetadata metadata = new VideoMetadata(
+                    title,
+                    channelName,
+                    channelUrl,
+                    null
+            );
+            if (isAssociatedMusicChannel(channelName)) {
+                VideoMetadata artistMetadata = preferredArtistMetadata(videoId, title);
+                if (artistMetadata != null) {
+                    metadata = artistMetadata;
+                }
+            }
+            return metadata;
         } finally {
             connection.disconnect();
         }
+    }
+
+    private boolean isAssociatedMusicChannel(String channelName) {
+        if (channelName == null) {
+            return false;
+        }
+        String normalized = channelName.trim().toLowerCase(Locale.US);
+        return normalized.endsWith("vevo") || normalized.endsWith(" - topic");
+    }
+
+    private VideoMetadata preferredArtistMetadata(String videoId, String title) {
+        try {
+            MusicClientConfig config = musicClientConfig(videoId);
+            if (config == null) {
+                return null;
+            }
+            String artistBrowseId = artistBrowseId(config, videoId);
+            if (artistBrowseId == null) {
+                return null;
+            }
+
+            JSONObject body = new JSONObject()
+                    .put("context", config.context())
+                    .put("browseId", artistBrowseId);
+            JSONObject response = postMusicJson("browse", config, body);
+            JSONObject header = object(response, "header");
+            JSONObject renderer = object(header, "musicImmersiveHeaderRenderer");
+            if (renderer == null) {
+                renderer = object(header, "musicVisualHeaderRenderer");
+            }
+            String artistName = firstRunText(object(renderer, "title"));
+            JSONObject subscribe = object(
+                    object(renderer, "subscriptionButton"),
+                    "subscribeButtonRenderer"
+            );
+            String channelId = optional(subscribe, "channelId");
+            String canonical = optional(
+                    object(object(response, "microformat"), "microformatDataRenderer"),
+                    "urlCanonical"
+            );
+            String channelUrl = youtubeChannelUrl(canonical, channelId);
+            if (artistName == null
+                    || artistName.length() > 200
+                    || channelUrl == null) {
+                return null;
+            }
+            return new VideoMetadata(title, artistName, channelUrl, null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private MusicClientConfig musicClientConfig(String videoId) throws Exception {
+        MusicClientConfig cached = musicClientConfig;
+        if (cached != null) {
+            return cached;
+        }
+        synchronized (CobaltDownloadsActivity.class) {
+            cached = musicClientConfig;
+            if (cached != null) {
+                return cached;
+            }
+            HttpURLConnection connection = (HttpURLConnection) new URL(
+                    "https://music.youtube.com/watch?v=" + videoId
+            ).openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(15_000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("Accept", "text/html");
+            connection.setRequestProperty("User-Agent", musicUserAgent());
+            try {
+                if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                        || connection.getContentLengthLong() > MAX_CHANNEL_RESPONSE_CHARS) {
+                    return null;
+                }
+                String html = readText(connection, MAX_CHANNEL_RESPONSE_CHARS);
+                if (html == null) {
+                    return null;
+                }
+                Matcher key = MUSIC_API_KEY.matcher(html);
+                Matcher version = MUSIC_CLIENT_VERSION.matcher(html);
+                if (!key.find() || !version.find()) {
+                    return null;
+                }
+                cached = new MusicClientConfig(key.group(1), version.group(1));
+                musicClientConfig = cached;
+                return cached;
+            } finally {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private String artistBrowseId(
+            MusicClientConfig config,
+            String videoId
+    ) throws Exception {
+        JSONObject body = new JSONObject()
+                .put("context", config.context())
+                .put("videoId", videoId)
+                .put("isAudioOnly", false);
+        JSONObject response = postMusicJson("next", config, body);
+        JSONObject watchNext = object(
+                object(
+                        object(response, "contents"),
+                        "singleColumnMusicWatchNextResultsRenderer"
+                ),
+                "tabbedRenderer"
+        );
+        watchNext = object(watchNext, "watchNextTabbedResultsRenderer");
+        JSONArray tabs = array(watchNext, "tabs");
+        if (tabs == null || tabs.length() == 0) {
+            return null;
+        }
+        JSONObject content = object(object(tabs.optJSONObject(0), "tabRenderer"), "content");
+        JSONObject queue = object(content, "musicQueueRenderer");
+        JSONObject playlist = object(object(queue, "content"), "playlistPanelRenderer");
+        JSONArray items = array(playlist, "contents");
+        if (items == null) {
+            return null;
+        }
+        for (int index = 0; index < items.length(); index++) {
+            JSONObject renderer = object(
+                    items.optJSONObject(index),
+                    "playlistPanelVideoRenderer"
+            );
+            if (renderer == null || !videoId.equals(renderer.optString("videoId"))) {
+                continue;
+            }
+            JSONArray runs = array(object(renderer, "longBylineText"), "runs");
+            if (runs == null) {
+                return null;
+            }
+            for (int runIndex = 0; runIndex < runs.length(); runIndex++) {
+                JSONObject browse = object(
+                        object(runs.optJSONObject(runIndex), "navigationEndpoint"),
+                        "browseEndpoint"
+                );
+                JSONObject supported = object(
+                        browse,
+                        "browseEndpointContextSupportedConfigs"
+                );
+                JSONObject music = object(supported, "browseEndpointContextMusicConfig");
+                if (music != null && "MUSIC_PAGE_TYPE_ARTIST".equals(
+                        music.optString("pageType"))) {
+                    return optional(browse, "browseId");
+                }
+            }
+        }
+        return null;
+    }
+
+    private JSONObject postMusicJson(
+            String endpoint,
+            MusicClientConfig config,
+            JSONObject body
+    ) throws Exception {
+        URL url = new URL(
+                "https://music.youtube.com/youtubei/v1/"
+                        + endpoint
+                        + "?key="
+                        + config.apiKey
+                        + "&prettyPrint=false"
+        );
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(15_000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        connection.setRequestProperty("User-Agent", musicUserAgent());
+        byte[] payload = body.toString().getBytes("UTF-8");
+        connection.setFixedLengthStreamingMode(payload.length);
+        try {
+            try (java.io.OutputStream output = connection.getOutputStream()) {
+                output.write(payload);
+            }
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK
+                    || connection.getContentLengthLong() > MAX_MUSIC_RESPONSE_CHARS) {
+                return null;
+            }
+            String response = readText(connection, MAX_MUSIC_RESPONSE_CHARS);
+            return response == null ? null : new JSONObject(response);
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    private String youtubeChannelUrl(String canonical, String channelId) {
+        if (canonical != null) {
+            try {
+                Uri uri = Uri.parse(canonical);
+                String host = uri.getHost();
+                String path = uri.getPath();
+                if ("https".equalsIgnoreCase(uri.getScheme())
+                        && host != null
+                        && host.equalsIgnoreCase("music.youtube.com")
+                        && path != null
+                        && path.startsWith("/@")) {
+                    String value = "https://www.youtube.com" + path;
+                    if (isYoutubeChannelUrl(value)) {
+                        return value;
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // Fall back to the subscribable channel ID.
+            }
+        }
+        if (channelId != null && channelId.matches("UC[A-Za-z0-9_-]{22}")) {
+            return "https://www.youtube.com/channel/" + channelId;
+        }
+        return null;
+    }
+
+    private String firstRunText(JSONObject text) {
+        JSONArray runs = array(text, "runs");
+        if (runs == null || runs.length() == 0) {
+            return null;
+        }
+        return optional(runs.optJSONObject(0), "text");
+    }
+
+    private JSONObject object(JSONObject parent, String key) {
+        return parent == null ? null : parent.optJSONObject(key);
+    }
+
+    private JSONArray array(JSONObject parent, String key) {
+        return parent == null ? null : parent.optJSONArray(key);
+    }
+
+    private String musicUserAgent() {
+        return "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 "
+                + "Chrome/138 Mobile Safari/537.36";
     }
 
     private String downloadChannelAvatarUrl(String channelUrl) {
@@ -755,7 +1014,7 @@ public final class CobaltDownloadsActivity extends Activity {
         }
 
         File cacheFile = new File(
-                new File(getCacheDir(), "cobalt-channel-avatars"),
+                new File(getCacheDir(), "cobalt-channel-avatars-v2"),
                 videoId + ".jpg"
         );
         BACKGROUND_EXECUTOR.execute(() -> {
@@ -1412,6 +1671,27 @@ public final class CobaltDownloadsActivity extends Activity {
             this.channelName = channelName;
             this.channelUrl = channelUrl;
             this.avatarUrl = avatarUrl;
+        }
+    }
+
+    private static final class MusicClientConfig {
+        final String apiKey;
+        final String clientVersion;
+
+        MusicClientConfig(String apiKey, String clientVersion) {
+            this.apiKey = apiKey;
+            this.clientVersion = clientVersion;
+        }
+
+        JSONObject context() throws Exception {
+            return new JSONObject().put(
+                    "client",
+                    new JSONObject()
+                            .put("clientName", "WEB_REMIX")
+                            .put("clientVersion", clientVersion)
+                            .put("hl", "en")
+                            .put("gl", "US")
+            );
         }
     }
 }
