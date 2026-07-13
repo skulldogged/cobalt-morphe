@@ -204,7 +204,7 @@ public final class CobaltDownloadService extends Service {
         );
         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-        Uri collection = MediaStore.Video.Media.getContentUri(
+        Uri collection = MediaStore.Downloads.getContentUri(
                 MediaStore.VOLUME_EXTERNAL_PRIMARY
         );
         Uri outputUri = resolver.insert(collection, values);
