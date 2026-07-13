@@ -1,0 +1,37 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadsActivity.java
+  s_12a43715d907c7::t_24860d34c05d6d 25,32-36,38,42-45,49-60,154
+  s_12a43715d907c7::t_0d142a87c4c6ce 299-318,384,391-392,400,405-406,415,427
+  s_12a43715d907c7::t_805574b8de7ffd 62,80
+  s_12a43715d907c7::t_6d5c3d74b69e0d 8-9
+  s_12a43715d907c7::t_0a431b588a8e0a 61
+  s_12a43715d907c7::t_abcd45dc8c0c69 319-321,381-383
+  s_12a43715d907c7::t_e49bbee90d4907 385-390
+  s_12a43715d907c7::t_9500236349fec2 393-395,397-399
+  s_12a43715d907c7::t_e1c2a94bb393a5 401-404
+  s_12a43715d907c7::t_5e4ecbe4e1d6dd 407-409,412-414
+  s_12a43715d907c7::t_b4b511322351ea 416-418,424-426
+  s_12a43715d907c7::t_e1bb1bb85940fa 428-429
+  s_12a43715d907c7::t_b95169e0f43316 18,162,209-235,239,244-255,322-380,396,410-411,419-423
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltDownloadsPageHook.java
+  s_12a43715d907c7::t_6b9c568f44083f 12-13,54-55,57,61-64,72-73,82,85,88-92,95,101,106,126
+  s_12a43715d907c7::t_87fa3de33ce847 74
+  s_12a43715d907c7::t_f6808a0810cd81 8,10,17-18,21-24,48-49,59-60,75,77-81,83-84,86-87,93-94,96-100,102-105,130-161
+  s_12a43715d907c7::t_d4a8b5a0281419 19,53,76,107-125,127-129
+  s_12a43715d907c7::t_63daec1f2c3e07 162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "43cc58f30fba9addb9aa74abd2df962d7310886d",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
