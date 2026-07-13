@@ -1,5 +1,6 @@
 package dev.skulldogged.cobalt.extension;
 
+import android.annotation.SuppressLint;
 import android.app.DownloadManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -33,8 +34,10 @@ import java.util.concurrent.Future;
 
 import androidx.media3.muxer.MediaMuxerCompat;
 
+@SuppressLint({"NewApi", "NotificationPermission"})
 public final class CobaltDownloadService extends Service {
     static final String EXTRA_SOURCE_URL = "source_url";
+    static final String EXTRA_RECORD_ID = "record_id";
 
     private static final String CHANNEL_ID = "cobalt_downloads";
     private static final int NOTIFICATION_ID = 0x434F4241;
@@ -59,6 +62,7 @@ public final class CobaltDownloadService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String sourceUrl = intent == null ? null : intent.getStringExtra(EXTRA_SOURCE_URL);
+        String recordId = intent == null ? null : intent.getStringExtra(EXTRA_RECORD_ID);
         if (notificationManager != null) {
             notificationManager.cancel(RESULT_NOTIFICATION_ID);
         }
@@ -68,11 +72,15 @@ public final class CobaltDownloadService extends Service {
         );
 
         if (sourceUrl == null || sourceUrl.isEmpty()) {
-            finishWithFailure("No video URL was provided", startId);
+            finishWithFailure(recordId, "No video URL was provided", startId);
             return START_NOT_STICKY;
         }
+        if (recordId == null || recordId.isEmpty()) {
+            recordId = CobaltDownloadRepository.create(this, sourceUrl);
+        }
 
-        JOB_EXECUTOR.execute(() -> runDownload(sourceUrl, startId));
+        String finalRecordId = recordId;
+        JOB_EXECUTOR.execute(() -> runDownload(sourceUrl, finalRecordId, startId));
         return START_NOT_STICKY;
     }
 
@@ -81,7 +89,7 @@ public final class CobaltDownloadService extends Service {
         return null;
     }
 
-    private void runDownload(String sourceUrl, int startId) {
+    private void runDownload(String sourceUrl, String recordId, int startId) {
         File jobDirectory = new File(
                 getCacheDir(),
                 "cobalt-downloads/" + UUID.randomUUID()
@@ -89,8 +97,15 @@ public final class CobaltDownloadService extends Service {
 
         try {
             CobaltResponse response = CobaltClient.request(sourceUrl);
+            CobaltDownloadRepository.setFilename(this, recordId, response.filename);
             if (response.kind == CobaltResponse.Kind.DIRECT) {
-                enqueueDirectDownload(response);
+                long downloadId = enqueueDirectDownload(response);
+                CobaltDownloadRepository.setDirect(
+                        this,
+                        recordId,
+                        sanitizeFilename(response.filename),
+                        downloadId
+                );
                 finishWithoutResult(startId);
                 return;
             }
@@ -104,7 +119,7 @@ public final class CobaltDownloadService extends Service {
 
             File videoFile = new File(jobDirectory, "video.part");
             File audioFile = new File(jobDirectory, "audio.part");
-            ProgressTracker tracker = new ProgressTracker(response.filename);
+            ProgressTracker tracker = new ProgressTracker(recordId, response.filename);
             ExecutorService downloads = Executors.newFixedThreadPool(2);
 
             try {
@@ -129,16 +144,18 @@ public final class CobaltDownloadService extends Service {
             }
 
             updateProgress(response.filename, "Finalizing MP4…", 90, false);
+            CobaltDownloadRepository.setFinalizing(this, recordId, response.filename, 90);
             String filename = sanitizeFilename(response.filename);
             Uri outputUri = remuxToMediaStore(
                     videoFile,
                     audioFile,
                     filename,
-                    response.filename
+                    response.filename,
+                    recordId
             );
-            finishWithSuccess(filename, outputUri, startId);
+            finishWithSuccess(recordId, filename, outputUri, startId);
         } catch (Exception exception) {
-            finishWithFailure(safeMessage(exception), startId);
+            finishWithFailure(recordId, safeMessage(exception), startId);
         } finally {
             deleteRecursively(jobDirectory);
         }
@@ -199,7 +216,8 @@ public final class CobaltDownloadService extends Service {
             File videoFile,
             File audioFile,
             String filename,
-            String notificationTitle
+            String notificationTitle,
+            String recordId
     ) throws Exception {
         ContentResolver resolver = getContentResolver();
         ContentValues values = new ContentValues();
@@ -228,7 +246,8 @@ public final class CobaltDownloadService extends Service {
                     videoFile,
                     audioFile,
                     descriptor,
-                    notificationTitle
+                    notificationTitle,
+                    recordId
             );
             completed = true;
         } finally {
@@ -247,7 +266,8 @@ public final class CobaltDownloadService extends Service {
             File videoFile,
             File audioFile,
             ParcelFileDescriptor output,
-            String notificationTitle
+            String notificationTitle,
+            String recordId
     ) throws Exception {
         MediaExtractor video = new MediaExtractor();
         MediaExtractor audio = new MediaExtractor();
@@ -319,6 +339,12 @@ public final class CobaltDownloadService extends Service {
                             90 + remuxProgress,
                             false
                     );
+                    CobaltDownloadRepository.setFinalizing(
+                            this,
+                            recordId,
+                            notificationTitle,
+                            90 + remuxProgress
+                    );
                     lastUpdate = now;
                 }
                 source.advance();
@@ -372,7 +398,7 @@ public final class CobaltDownloadService extends Service {
                 : -1;
     }
 
-    private void enqueueDirectDownload(CobaltResponse response) throws Exception {
+    private long enqueueDirectDownload(CobaltResponse response) throws Exception {
         URL url = requireHttps(response.url);
         String filename = sanitizeFilename(response.filename);
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url.toString()))
@@ -387,7 +413,7 @@ public final class CobaltDownloadService extends Service {
         if (manager == null) {
             throw new CobaltException("Android DownloadManager is unavailable");
         }
-        manager.enqueue(request);
+        return manager.enqueue(request);
     }
 
     private URL requireHttps(String value) throws Exception {
@@ -507,7 +533,8 @@ public final class CobaltDownloadService extends Service {
         stopSelf(startId);
     }
 
-    private void finishWithSuccess(String filename, Uri outputUri, int startId) {
+    private void finishWithSuccess(String recordId, String filename, Uri outputUri, int startId) {
+        CobaltDownloadRepository.setComplete(this, recordId, filename, outputUri);
         Intent viewIntent = new Intent(Intent.ACTION_VIEW)
                 .setDataAndType(outputUri, "video/mp4")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -538,7 +565,8 @@ public final class CobaltDownloadService extends Service {
         stopSelf(startId);
     }
 
-    private void finishWithFailure(String message, int startId) {
+    private void finishWithFailure(String recordId, String message, int startId) {
+        CobaltDownloadRepository.setFailed(this, recordId, message);
         stopForeground(STOP_FOREGROUND_REMOVE);
         if (notificationManager != null) {
             notificationManager.cancel(NOTIFICATION_ID);
@@ -575,9 +603,11 @@ public final class CobaltDownloadService extends Service {
         private final long[] expected = {-1, -1};
         private final long[] received = {0, 0};
         private final String title;
+        private final String recordId;
         private long lastUpdate;
 
-        ProgressTracker(String title) {
+        ProgressTracker(String recordId, String title) {
+            this.recordId = recordId;
             this.title = title;
         }
 
@@ -600,6 +630,14 @@ public final class CobaltDownloadService extends Service {
 
             if (expected[0] <= 0 || expected[1] <= 0) {
                 updateProgress(title, "Downloading video and audio…", 0, true);
+                CobaltDownloadRepository.setDownloading(
+                        CobaltDownloadService.this,
+                        recordId,
+                        title,
+                        received[0] + received[1],
+                        -1,
+                        0
+                );
                 return;
             }
             long totalExpected = expected[0] + expected[1];
@@ -610,6 +648,14 @@ public final class CobaltDownloadService extends Service {
                     "Downloading video and audio… " + progress + "%",
                     progress,
                     false
+            );
+            CobaltDownloadRepository.setDownloading(
+                    CobaltDownloadService.this,
+                    recordId,
+                    title,
+                    totalReceived,
+                    totalExpected,
+                    progress
             );
         }
     }

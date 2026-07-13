@@ -21,6 +21,7 @@ public final class CobaltDownloader {
         if (application instanceof Context) {
             applicationContext = ((Context) application).getApplicationContext();
             CobaltSettings.initialize(applicationContext);
+            CobaltDownloadsPageHook.install(application);
         }
     }
 
@@ -34,20 +35,42 @@ public final class CobaltDownloader {
             return true;
         }
 
+        String sourceUrl = "https://www.youtube.com/watch?v=" + videoId;
+        String recordId = CobaltDownloadRepository.create(context, sourceUrl);
+        return start(context, sourceUrl, recordId);
+    }
+
+    static boolean retry(String recordId) {
+        Context context = applicationContext;
+        if (context == null || !DOWNLOAD_ACTIVE.compareAndSet(false, true)) {
+            return false;
+        }
+        CobaltDownloadRepository.Record record = CobaltDownloadRepository.find(context, recordId);
+        if (record == null || record.sourceUrl == null || record.sourceUrl.isEmpty()) {
+            DOWNLOAD_ACTIVE.set(false);
+            return false;
+        }
+        CobaltDownloadRepository.prepareRetry(context, recordId);
+        return start(context, record.sourceUrl, recordId);
+    }
+
+    private static boolean start(Context context, String sourceUrl, String recordId) {
         Intent intent = new Intent(context, CobaltDownloadService.class)
-                .putExtra(
-                        CobaltDownloadService.EXTRA_SOURCE_URL,
-                        "https://www.youtube.com/watch?v=" + videoId
-                );
+                .putExtra(CobaltDownloadService.EXTRA_SOURCE_URL, sourceUrl)
+                .putExtra(CobaltDownloadService.EXTRA_RECORD_ID, recordId);
         try {
             context.startForegroundService(intent);
         } catch (RuntimeException exception) {
             DOWNLOAD_ACTIVE.set(false);
+            CobaltDownloadRepository.setFailed(
+                    context,
+                    recordId,
+                    "Could not start the cobalt download"
+            );
             showToast(context, "Could not start the cobalt download");
             return true;
         }
         showToast(context, "Preparing cobalt download…");
-
         return true;
     }
 

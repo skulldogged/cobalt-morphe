@@ -21,6 +21,12 @@ This project uses code and fingerprints adapted from
 5. Direct cobalt `tunnel` and `redirect` responses still fall back to Android's
    system `DownloadManager`.
 
+The **Downloads** entry on YouTube's **You** tab opens a native cobalt download
+manager instead of YouTube's Premium offline page. It keeps a persistent list
+of downloads created by this patch, shows transfer and MP4 finalization
+progress, opens completed videos, deletes downloaded files, and lets failed
+downloads be retried.
+
 The patch adds a **Cobalt downloads** screen to Morphe's in-app settings. It
 persists and validates the options that the native MP4 pipeline supports:
 
@@ -93,6 +99,10 @@ kept aligned with the upstream download-button fingerprint.
 - `CobaltClient.java` owns the cobalt JSON request and response parsing.
 - `CobaltDownloader.java` starts the foreground download flow and prevents
   accidental duplicate jobs.
+- `CobaltDownloadsPageHook.java` replaces the You-tab Downloads entry using
+  YouTube's stable `downloads_page_entry_point_container` resource ID.
+- `CobaltDownloadsActivity.java` and `CobaltDownloadRepository.java` provide
+  the native manager UI and persistent download lifecycle records.
 - `CobaltDownloadService.java` owns tunnel downloads, progress notifications,
   temporary storage, the Media3 AV1/VP9 + Opus MP4 remux, and direct-response
   `DownloadManager` fallback.

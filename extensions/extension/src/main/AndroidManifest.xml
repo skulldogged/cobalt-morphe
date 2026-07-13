@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application>
+        <activity
+            android:name="dev.skulldogged.cobalt.extension.CobaltDownloadsActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
         <service
             android:name="dev.skulldogged.cobalt.extension.CobaltDownloadService"
             android:exported="false"

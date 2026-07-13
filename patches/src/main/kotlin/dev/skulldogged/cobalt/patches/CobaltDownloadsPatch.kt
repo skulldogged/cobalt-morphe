@@ -37,16 +37,42 @@ private val cobaltDownloadsManifestPatch = resourcePatch {
             val serviceName =
                 "dev.skulldogged.cobalt.extension.CobaltDownloadService"
             val services = document.getElementsByTagName("service")
+            var serviceExists = false
             for (index in 0 until services.length) {
                 val element = services.item(index) as Element
-                if (element.getAttribute("android:name") == serviceName) return@use
+                if (element.getAttribute("android:name") == serviceName) {
+                    serviceExists = true
+                    break
+                }
             }
 
-            val service = document.createElement("service")
-            service.setAttribute("android:name", serviceName)
-            service.setAttribute("android:exported", "false")
-            service.setAttribute("android:foregroundServiceType", "dataSync")
-            application.appendChild(service)
+            if (!serviceExists) {
+                val service = document.createElement("service")
+                service.setAttribute("android:name", serviceName)
+                service.setAttribute("android:exported", "false")
+                service.setAttribute("android:foregroundServiceType", "dataSync")
+                application.appendChild(service)
+            }
+
+            val activityName =
+                "dev.skulldogged.cobalt.extension.CobaltDownloadsActivity"
+            val activities = document.getElementsByTagName("activity")
+            var activityExists = false
+            for (index in 0 until activities.length) {
+                val element = activities.item(index) as Element
+                if (element.getAttribute("android:name") == activityName) {
+                    activityExists = true
+                    break
+                }
+            }
+
+            if (!activityExists) {
+                val activity = document.createElement("activity")
+                activity.setAttribute("android:name", activityName)
+                activity.setAttribute("android:exported", "false")
+                activity.setAttribute("android:launchMode", "singleTop")
+                application.appendChild(activity)
+            }
         }
     }
 
@@ -161,7 +187,7 @@ private val cobaltDownloadsManifestPatch = resourcePatch {
 @Suppress("unused")
 val cobaltDownloadsPatch = bytecodePatch(
     name = "Cobalt downloads",
-    description = "Replaces YouTube's native download action with a direct cobalt download.",
+    description = "Replaces YouTube's download action and Downloads page with a native cobalt manager.",
     default = false,
 ) {
     dependsOn(cobaltDownloadsManifestPatch)
