@@ -1,0 +1,22 @@
+extensions/extension/src/main/java/dev/skulldogged/cobalt/extension/CobaltTurnstileActivity.java
+  s_12a43715d907c7::t_e0de1017a81b50 6,22,35,40,49-54,57,61,68,73-81,96,102-106,110,113-119,121,126-144,147,151-152,155,158-160,166-167,172-178,225,227,246-248,251,255-293,345,358-359,400,411-418,425,447-477
+  s_12a43715d907c7::t_ee59de2d17a153 478
+README.md
+  s_12a43715d907c7::t_e4c5dab8b9040e 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.13",
+  "base_commit_sha": "d66eb074363132778f8d4be4a710b280c630382b",
+  "prompts": {},
+  "sessions": {
+    "s_12a43715d907c7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5895-cf23-7770-80fb-4bec97736005",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Mars <mars@pupbrained.dev>"
+    }
+  }
+}
