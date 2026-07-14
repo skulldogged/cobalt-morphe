@@ -1,3 +1,9 @@
+## [1.8.2](https://github.com/skulldogged/cobalt-morphe/compare/v1.8.1...v1.8.2) (2026-07-14)
+
+### 🐛 Bug Fixes
+
+* hide automatic Turnstile verification ([d66eb07](https://github.com/skulldogged/cobalt-morphe/commit/d66eb074363132778f8d4be4a710b280c630382b))
+
 ## [1.8.1](https://github.com/skulldogged/cobalt-morphe/compare/v1.8.0...v1.8.1) (2026-07-13)
 
 ### 🐛 Bug Fixes
