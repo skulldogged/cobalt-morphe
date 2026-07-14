@@ -13,7 +13,8 @@ This project uses code and fingerprints adapted from
 
 1. Tap **Download** on a regular YouTube video.
 2. If the configured instance requires Cloudflare Turnstile, an in-app
-   authorization page obtains a short-lived cobalt session first.
+   verification flow obtains a short-lived cobalt session behind a native
+   loading screen. The webpage is revealed only if the challenge needs input.
 3. The injected extension posts the video URL to the configured cobalt API on
    a background thread.
 4. A cobalt `local-processing` merge response is downloaded with native
